@@ -21,6 +21,8 @@ import random
 from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+from ffmpeg_locator import find_ffmpeg_tools_first
+
 
 from PIL import Image, ImageTk
 
@@ -153,15 +155,21 @@ def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event) -> int:
 
 
 def default_outdir() -> str:
-    """~/Desktop/KLmp3-AAMMJJ (tout en vrac dedans)"""
-    base = os.path.join(os.path.expanduser("~"), "Desktop")
-    yymmdd = datetime.now().strftime("%y%m%d")  # AAMMJJ
-    return os.path.join(base, f"KLmp3-{yymmdd}")
+    """~/klmp3/AA/MM/JJ (dossier daté, créé au lancement si besoin)"""
+    base = os.path.join(os.path.expanduser("~"), "klmp3")
+    yy = datetime.now().strftime("%y")
+    mm = datetime.now().strftime("%m")
+    dd = datetime.now().strftime("%d")
+    return os.path.join(base, yy, mm, dd)
 
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
+        # Localise ffmpeg/ffprobe (PATH sinon tools/)
+        self.ff = find_ffmpeg_tools_first()
+        self.ffmpeg_path = self.ff.ffmpeg
+        self.ffprobe_path = self.ff.ffprobe
         self.title("KLmp3 - v1.3")
         self.geometry("820x620")
         self.minsize(780, 560)
@@ -198,6 +206,11 @@ class App(tk.Tk):
         # UI refs
         self._logo_img = None  # keep ref
         self.has_aac_at = False
+        
+        # Localise ffmpeg/ffprobe (PATH sinon tools/)
+        self.ff = find_ffmpeg_tools_first()
+        self.ffmpeg_path = self.ff.ffmpeg
+        self.ffprobe_path = self.ff.ffprobe
 
         self._build_ui()
 
@@ -283,7 +296,9 @@ class App(tk.Tk):
 
         self.progress = ttk.Progressbar(frm_ctrl, mode="indeterminate")
         self.progress.grid(row=0, column=2, sticky="ew", padx=(14, 0))
-        frm_ctrl.columnconfigure(2, weight=1)
+        frm_ctrl.columnconfigure(0, weight=1)
+        frm_ctrl.columnconfigure(1, weight=1)
+        frm_ctrl.columnconfigure(2, weight=2)
 
         # Log
         self.frm_log = ttk.LabelFrame(self.tab_general, text="Journal")
@@ -309,7 +324,7 @@ class App(tk.Tk):
                 pass
 
         # Bigger buttons: padding increases height
-        self.style.configure("KLM.Big.TButton", padding=(14, 14))
+        self.style.configure("KLM.Big.TButton", padding=(18, 18))
 
     def _build_logo_and_theme_selector(self):
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -607,21 +622,72 @@ class App(tk.Tk):
         self.txt.see("end")
         self.txt.configure(state="disabled")
 
-    def _ffmpeg_has_encoder(self, encoder_name: str) -> bool:
-        if which_or_none("ffmpeg") is None:
-            return False
+    def _check_tools(self):
+        missing = []
+
+        # ffmpeg/ffprobe via PATH ou tools/
+        if not self.ffmpeg_path:
+            missing.append("ffmpeg")
+        if not self.ffprobe_path:
+            missing.append("ffprobe")
+
+        # yt-dlp (module python)
         try:
-            out = subprocess.check_output(["ffmpeg", "-hide_banner", "-encoders"], text=True, stderr=subprocess.STDOUT)
+            import yt_dlp  # noqa: F401
+        except Exception:
+            missing.append("yt-dlp (module python)")
+
+        if missing:
+            self.log("⚠️ Outils manquants : " + ", ".join(missing))
+            self.log("   - Installez yt-dlp : python3 -m pip install --user -U yt-dlp")
+            self.log("   - Installez ffmpeg/ffprobe OU mettez-les dans tools/<platform>/")
+        else:
+            # info sur la source
+            if getattr(self, "ff", None) and self.ff.source == "TOOLS":
+                self.log("📦 ffmpeg/ffprobe embarqués : utilisés depuis tools/")
+            else:
+                self.log("🧭 ffmpeg/ffprobe : trouvés dans le PATH")
+            self.log("✅ Outils détectés : yt-dlp (module), ffmpeg, ffprobe.")
+
+        self.log(f"📁 Dossier de sortie par défaut : {self.outdir_var.get()}")
+
+    def _ffmpeg_has_encoder(self, encoder_name: str) -> bool:
+        # Guard : ffmpeg introuvable
+        if not self.ffmpeg_path:
+            return False
+
+        try:
+            out = subprocess.check_output(
+                [self.ffmpeg_path, "-hide_banner", "-encoders"],
+                text=True,
+                stderr=subprocess.STDOUT
+            )
             return encoder_name in out
         except Exception:
             return False
 
-    def _check_tools(self):
+
+        try:
+            out = subprocess.check_output(
+                [self.ffmpeg_path, "-hide_banner", "-encoders"],
+                text=True,
+                stderr=subprocess.STDOUT
+            )
+            return encoder_name in out
+        except Exception:
+            return False
+
+
         missing = []
-        if which_or_none("ffmpeg") is None:
+        if not self.ffmpeg_path:
             missing.append("ffmpeg")
-        if which_or_none("ffprobe") is None:
+        if not self.ffprobe_path:
             missing.append("ffprobe")
+            
+        if self.ff.source == "TOOLS":
+            self.log("📦 ffmpeg/ffprobe embarqués : utilisés depuis tools/")
+        elif self.ff.source == "PATH":
+            self.log("🧭 ffmpeg/ffprobe : trouvés dans le PATH")    
 
         try:
             import yt_dlp  # noqa: F401
@@ -869,7 +935,7 @@ class App(tk.Tk):
         # MAIS attention : ce n'est pas forcément le même codec. On garde la conversion
         # pour être certain du format final (cohérence).
         cmd_ff = [
-            "ffmpeg", "-y",
+            self.ffmpeg_path, "-y",
             "-i", in_path,
             "-map", "0:a:0",
             "-vn",
