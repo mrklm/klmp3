@@ -300,12 +300,20 @@ class App(tk.Tk):
         self.txt.configure(state="disabled")
 
     def _setup_styles(self):
+        # IMPORTANT (macOS) : le thème "aqua" ignore beaucoup de backgrounds.
+        # "clam" accepte bien les couleurs -> thèmes vraiment visibles.
         try:
-            self.style.theme_use(self.style.theme_use())
+            self.style.theme_use("clam")
         except Exception:
-            pass
+            # fallback si "clam" indisponible (rare)
+            try:
+                self.style.theme_use("alt")
+            except Exception:
+                pass
+
         # Bigger buttons: padding increases height
         self.style.configure("KLM.Big.TButton", padding=(14, 14))
+
 
     def _build_logo_and_theme_selector(self):
         # Try to load assets/logo.png relative to this script
@@ -358,7 +366,7 @@ class App(tk.Tk):
             textvariable=self.theme_var,
             values=list(THEMES.keys()),
             state="readonly",
-            width=28
+            width=20
         )
         self.cb_theme.pack(anchor="ne")
         self.cb_theme.bind("<<ComboboxSelected>>", self._on_theme_change)
