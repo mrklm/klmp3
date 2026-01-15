@@ -3,10 +3,11 @@
 
 """
 KLmp3 - Extracteur audio YouTube/Twitch (Tkinter)
-- YouTube : yt-dlp -x --audio-format mp3
-- Twitch VOD : yt-dlp -f Audio_Only (mp4) puis ffmpeg (genpts) mp4 -> mp3
+- Télécharge l'audio avec yt-dlp, puis convertit avec ffmpeg selon le format choisi.
+- YouTube : bestaudio/best
+- Twitch VOD : Audio_Only
 Notes:
-- Nécessite: yt-dlp (pip) + ffmpeg + ffprobe accessibles (PATH)
+- Nécessite: yt-dlp (module python) + ffmpeg + ffprobe accessibles (PATH)
 - Interface en français avec vouvoiement (préférence utilisateur)
 """
 
@@ -21,7 +22,6 @@ from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
-# Pillow (pour redimensionner proprement le logo)
 from PIL import Image, ImageTk
 
 
@@ -71,7 +71,7 @@ THEMES = {
         BG="#E6B65C", PANEL="#F5E6CC", FIELD="#FFFFFF",
         FG="#50371A", FIELD_FG="#50371A", ACCENT="#F2B705"
     ),
-    # ===== Thèmes Pouêt-Pouêt (mais distincts) =====
+    # ===== Thèmes Pouêt-Pouêt =====
     "[Pouêt] Chewing-gum Océan": dict(
         BG="#00A6C8", PANEL="#0083A1", FIELD="#00C7B7",
         FG="#082026", FIELD_FG="#082026", ACCENT="#FF4FD8"
@@ -97,6 +97,18 @@ THEMES = {
         FG="#5A2E0C", FIELD_FG="#5A2E0C", ACCENT="#8B3A1A"
     ),
 }
+
+
+# Formats proposés dans l'UI (clé interne -> label)
+FORMAT_LABELS = {
+    "mp3": "MP3",
+    "m4a": "M4A (AAC)",
+    "opus": "OPUS",
+    "flac": "FLAC",
+    "ogg": "OGG (Vorbis)",
+    "wav": "WAV",
+}
+FORMAT_KEYS_IN_ORDER = ["mp3", "m4a", "opus", "flac", "ogg", "wav"]
 
 
 def is_twitch(url: str) -> bool:
@@ -150,11 +162,12 @@ def default_outdir() -> str:
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("KLmp3 - v1.2")
+        self.title("KLmp3 - v1.3")
         self.geometry("820x620")
         self.minsize(780, 560)
 
         # Theme
+        self.style = ttk.Style()
         self.theme_var = tk.StringVar()
         self.current_theme_name = random.choice(list(THEMES.keys()))
         self.theme_var.set(self.current_theme_name)
@@ -169,16 +182,34 @@ class App(tk.Tk):
 
         # UI vars
         self.outdir_var = tk.StringVar(value=default_outdir())
-        self.audio_format_var = tk.StringVar(value="mp3")  # mp3 or m4a
-        self.mp3_quality_var = tk.StringVar(value="0")     # 0 best, 2..9 smaller
+
+        # Format (6 formats) — MP3 par défaut
+        self.audio_format_var = tk.StringVar(value="mp3")
+
+        # Réglages avancés par format
+        self.mp3_quality_var = tk.StringVar(value="0")           # 0 best, 9 smaller
+        self.aac_bitrate_var = tk.StringVar(value="192k")         # 96k..320k
+        self.opus_bitrate_var = tk.StringVar(value="128k")        # 64k..192k
+        self.vorbis_quality_var = tk.StringVar(value="5")         # 0..10
+        self.flac_level_var = tk.StringVar(value="5")             # 0..8
+
         self.keep_intermediate_var = tk.BooleanVar(value=False)
 
         # UI refs
         self._logo_img = None  # keep ref
-        self.style = ttk.Style()
+        self.has_aac_at = False
 
         self._build_ui()
-        self.apply_theme(self.current_theme_name)  # applique le thème aléatoire au démarrage
+
+        # Détection encoder aac_at (macOS)
+        self.has_aac_at = self._ffmpeg_has_encoder("aac_at")
+
+        # Applique le thème aléatoire au démarrage
+        self.apply_theme(self.current_theme_name)
+
+        # UI dépendant format
+        self._update_advanced_controls()
+
         self._check_tools()
         self._refresh_url_buttons()
 
@@ -192,7 +223,7 @@ class App(tk.Tk):
 
         self._setup_styles()
 
-        # Logo (top) + Theme selector (top right) -> hors onglets
+        # Logo + Theme selector (hors onglets)
         self._build_logo_and_theme_selector()
 
         # Notebook (tabs)
@@ -211,17 +242,14 @@ class App(tk.Tk):
         frm_urls = ttk.Frame(self.tab_general)
         frm_urls.pack(fill="x", **pad)
 
-        self.lbl_urls = ttk.Label(frm_urls, text="URL YouTube ou Twitch (VOD) :")
-        self.lbl_urls.grid(row=0, column=1, sticky="w")
+        ttk.Label(frm_urls, text="URL YouTube ou Twitch (VOD) :").grid(row=0, column=1, sticky="w")
 
-        # + / - buttons (left of url lines)
         self.btn_add = ttk.Button(frm_urls, text="+", width=3, command=self.add_url_row)
         self.btn_add.grid(row=1, column=0, sticky="n", padx=(0, 8))
 
         self.btn_remove = ttk.Button(frm_urls, text="-", width=3, command=self.remove_url_row)
         self.btn_remove.grid(row=2, column=0, sticky="n", padx=(0, 8), pady=(6, 0))
 
-        # URL entries container (right)
         self.frm_url_entries = ttk.Frame(frm_urls)
         self.frm_url_entries.grid(row=1, column=1, rowspan=3, sticky="ew")
         frm_urls.columnconfigure(1, weight=1)
@@ -232,9 +260,7 @@ class App(tk.Tk):
         frm_mid = ttk.Frame(self.tab_general)
         frm_mid.pack(fill="x", **pad)
 
-        self.lbl_out = ttk.Label(frm_mid, text="Dossier de sortie :")
-        self.lbl_out.grid(row=0, column=0, sticky="w")
-
+        ttk.Label(frm_mid, text="Dossier de sortie :").grid(row=0, column=0, sticky="w")
         self.out_ent = ttk.Entry(frm_mid, textvariable=self.outdir_var)
         self.out_ent.grid(row=1, column=0, sticky="ew", pady=(4, 0))
 
@@ -242,7 +268,7 @@ class App(tk.Tk):
         btn_browse.grid(row=1, column=1, padx=(8, 0), sticky="ew")
         frm_mid.columnconfigure(0, weight=1)
 
-        # Controls (bigger buttons)
+        # Controls
         frm_ctrl = ttk.Frame(self.tab_general)
         frm_ctrl.pack(fill="x", **pad)
 
@@ -252,9 +278,6 @@ class App(tk.Tk):
         self.btn_stop = ttk.Button(frm_ctrl, text="Arrêter", command=self.stop, state="disabled", style="KLM.Big.TButton")
         self.btn_stop.grid(row=0, column=1, sticky="ew", padx=(10, 0))
 
-        # Make same width
-        frm_ctrl.columnconfigure(0, weight=0)
-        frm_ctrl.columnconfigure(1, weight=0)
         self.btn_start.configure(width=14)
         self.btn_stop.configure(width=14)
 
@@ -262,11 +285,11 @@ class App(tk.Tk):
         self.progress.grid(row=0, column=2, sticky="ew", padx=(14, 0))
         frm_ctrl.columnconfigure(2, weight=1)
 
-        # Log (dans Général)
+        # Log
         self.frm_log = ttk.LabelFrame(self.tab_general, text="Journal")
         self.frm_log.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
-        # Journal agrandi (+5 lignes)
+        # +5 lignes vs ancien (v1.2)
         self.txt = tk.Text(self.frm_log, wrap="word", height=17, borderwidth=0, highlightthickness=0)
         self.txt.pack(fill="both", expand=True, padx=10, pady=10)
         self.txt.configure(state="disabled")
@@ -289,20 +312,16 @@ class App(tk.Tk):
         self.style.configure("KLM.Big.TButton", padding=(14, 14))
 
     def _build_logo_and_theme_selector(self):
-        # Try to load assets/logo.png relative to this script
         script_dir = os.path.dirname(os.path.abspath(__file__))
         logo_path = os.path.join(script_dir, "assets", "logo.png")
 
-        # Bandeau top : logo centré + combobox à droite
         top = ttk.Frame(self, height=150)
         top.pack(fill="x", padx=10, pady=(10, 4))
         top.pack_propagate(False)
 
-        # Layout en grid pour centrer le logo tout en gardant un widget à droite
         top.columnconfigure(0, weight=1)
         top.columnconfigure(1, weight=0)
 
-        # Logo container (col 0)
         logo_holder = ttk.Frame(top, height=150)
         logo_holder.grid(row=0, column=0, sticky="nsew")
         logo_holder.pack_propagate(False)
@@ -310,16 +329,11 @@ class App(tk.Tk):
         if os.path.isfile(logo_path):
             try:
                 img = Image.open(logo_path).convert("RGBA")
-
-                max_w = 680
-                max_h = 140
-
+                max_w, max_h = 680, 140
                 w, h = img.size
-                scale = min(max_w / w, max_h / h, 1.0)  # jamais agrandir
-
+                scale = min(max_w / w, max_h / h, 1.0)
                 new_w = max(1, int(w * scale))
                 new_h = max(1, int(h * scale))
-
                 img = img.resize((new_w, new_h), Image.LANCZOS)
 
                 self._logo_img = ImageTk.PhotoImage(img)
@@ -330,7 +344,6 @@ class App(tk.Tk):
         else:
             ttk.Label(logo_holder, text="").pack()
 
-        # Theme selector (col 1, en haut à droite, sans titre)
         theme_box_holder = ttk.Frame(top)
         theme_box_holder.grid(row=0, column=1, sticky="ne", padx=(10, 0), pady=(6, 0))
 
@@ -347,40 +360,123 @@ class App(tk.Tk):
     def _build_options_tab(self, parent):
         pad = {"padx": 10, "pady": 8}
 
-        # On garde le bloc options "comme avant", mais dans l'onglet Options.
         frm_opts = ttk.LabelFrame(parent, text="Options")
         frm_opts.pack(fill="x", **pad)
 
-        fmt_row = ttk.Frame(frm_opts)
-        fmt_row.pack(fill="x", padx=10, pady=(8, 2))
+        # --- Ligne Format audio (combobox) ---
+        row_fmt = ttk.Frame(frm_opts)
+        row_fmt.pack(fill="x", padx=10, pady=(8, 4))
 
-        ttk.Label(fmt_row, text="Format audio :").pack(side="left")
-        ttk.Radiobutton(fmt_row, text="MP3", value="mp3", variable=self.audio_format_var).pack(side="left", padx=(10, 0))
-        ttk.Radiobutton(fmt_row, text="M4A (sans perte / recommandé)", value="m4a", variable=self.audio_format_var).pack(side="left", padx=(10, 0))
+        ttk.Label(row_fmt, text="Format audio :").pack(side="left")
 
-        q_row = ttk.Frame(frm_opts)
-        q_row.pack(fill="x", padx=10, pady=2)
+        self.cb_format = ttk.Combobox(
+            row_fmt,
+            state="readonly",
+            width=18,
+            values=[FORMAT_LABELS[k] for k in FORMAT_KEYS_IN_ORDER]
+        )
+        self.cb_format.pack(side="left", padx=(10, 0))
 
-        ttk.Label(q_row, text="Qualité MP3 (VBR) :").pack(side="left")
-        q = ttk.Combobox(
-            q_row,
+        # Synchronise combobox UI <-> var interne
+        # On stocke la clé interne dans audio_format_var, mais on affiche un label.
+        self._format_label_to_key = {FORMAT_LABELS[k]: k for k in FORMAT_KEYS_IN_ORDER}
+        self._format_key_to_label = {k: FORMAT_LABELS[k] for k in FORMAT_KEYS_IN_ORDER}
+        self.cb_format.set(self._format_key_to_label[self.audio_format_var.get()])
+
+        self.cb_format.bind("<<ComboboxSelected>>", self._on_format_change)
+
+        # --- Bloc Réglage avancé (adaptatif) ---
+        frm_adv = ttk.LabelFrame(parent, text="Réglage avancé")
+        frm_adv.pack(fill="x", padx=10, pady=(0, 8))
+
+        self.adv_desc = ttk.Label(frm_adv, text="")
+        self.adv_desc.grid(row=0, column=0, sticky="w", padx=10, pady=(8, 2))
+
+        self.adv_holder = ttk.Frame(frm_adv)
+        self.adv_holder.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 8))
+        frm_adv.columnconfigure(0, weight=1)
+        self.adv_holder.columnconfigure(0, weight=0)
+        self.adv_holder.columnconfigure(1, weight=1)
+
+        # Widgets avancés (un par format) : on affiche/cache selon le format
+        # MP3
+        self.w_mp3 = ttk.Frame(self.adv_holder)
+        ttk.Label(self.w_mp3, text="Qualité MP3 (VBR) :").grid(row=0, column=0, sticky="w")
+        self.cb_mp3q = ttk.Combobox(
+            self.w_mp3,
             width=6,
             textvariable=self.mp3_quality_var,
             values=["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
             state="readonly",
         )
-        q.pack(side="left", padx=(10, 0))
-        ttk.Label(q_row, text="(0 = meilleure qualité, 9 = plus léger)").pack(side="left", padx=(10, 0))
+        self.cb_mp3q.grid(row=0, column=1, sticky="w", padx=(10, 0))
+        ttk.Label(self.w_mp3, text="(0 = meilleure qualité, 9 = plus léger)").grid(row=0, column=2, sticky="w", padx=(10, 0))
 
-        k_row = ttk.Frame(frm_opts)
-        k_row.pack(fill="x", padx=10, pady=(2, 8))
+        # AAC
+        self.w_aac = ttk.Frame(self.adv_holder)
+        ttk.Label(self.w_aac, text="Bitrate AAC :").grid(row=0, column=0, sticky="w")
+        self.cb_aac = ttk.Combobox(
+            self.w_aac,
+            width=10,
+            textvariable=self.aac_bitrate_var,
+            values=["96k", "128k", "160k", "192k", "256k", "320k"],
+            state="readonly",
+        )
+        self.cb_aac.grid(row=0, column=1, sticky="w", padx=(10, 0))
+        ttk.Label(self.w_aac, text="(recommandé : 192k)").grid(row=0, column=2, sticky="w", padx=(10, 0))
+
+        # OPUS
+        self.w_opus = ttk.Frame(self.adv_holder)
+        ttk.Label(self.w_opus, text="Bitrate OPUS :").grid(row=0, column=0, sticky="w")
+        self.cb_opus = ttk.Combobox(
+            self.w_opus,
+            width=10,
+            textvariable=self.opus_bitrate_var,
+            values=["64k", "96k", "128k", "160k", "192k"],
+            state="readonly",
+        )
+        self.cb_opus.grid(row=0, column=1, sticky="w", padx=(10, 0))
+        ttk.Label(self.w_opus, text="(recommandé : 128k)").grid(row=0, column=2, sticky="w", padx=(10, 0))
+
+        # OGG Vorbis
+        self.w_ogg = ttk.Frame(self.adv_holder)
+        ttk.Label(self.w_ogg, text="Qualité OGG (Vorbis) :").grid(row=0, column=0, sticky="w")
+        self.cb_ogg = ttk.Combobox(
+            self.w_ogg,
+            width=6,
+            textvariable=self.vorbis_quality_var,
+            values=[str(i) for i in range(0, 11)],
+            state="readonly",
+        )
+        self.cb_ogg.grid(row=0, column=1, sticky="w", padx=(10, 0))
+        ttk.Label(self.w_ogg, text="(0 = plus léger, 10 = meilleure qualité)").grid(row=0, column=2, sticky="w", padx=(10, 0))
+
+        # FLAC
+        self.w_flac = ttk.Frame(self.adv_holder)
+        ttk.Label(self.w_flac, text="Compression FLAC :").grid(row=0, column=0, sticky="w")
+        self.cb_flac = ttk.Combobox(
+            self.w_flac,
+            width=6,
+            textvariable=self.flac_level_var,
+            values=[str(i) for i in range(0, 9)],
+            state="readonly",
+        )
+        self.cb_flac.grid(row=0, column=1, sticky="w", padx=(10, 0))
+        ttk.Label(self.w_flac, text="(impacte la taille/CPU, pas la qualité)").grid(row=0, column=2, sticky="w", padx=(10, 0))
+
+        # WAV
+        self.w_wav = ttk.Frame(self.adv_holder)
+        ttk.Label(self.w_wav, text="WAV = non compressé (16-bit), pas de réglage.").grid(row=0, column=0, sticky="w")
+
+        # Keep intermediate
+        row_keep = ttk.Frame(frm_opts)
+        row_keep.pack(fill="x", padx=10, pady=(2, 8))
         ttk.Checkbutton(
-            k_row,
-            text="Conserver le fichier intermédiaire (utile pour Twitch / debug)",
+            row_keep,
+            text="Conserver le fichier intermédiaire (utile pour debug)",
             variable=self.keep_intermediate_var
         ).pack(side="left")
 
-        # Petite marge visuelle si l'onglet est grand
         ttk.Frame(parent).pack(fill="both", expand=True)
 
     # -------------- Theme system --------------
@@ -391,7 +487,6 @@ class App(tk.Tk):
             self.apply_theme(name)
 
     def apply_theme(self, theme_name: str):
-        """Applique couleurs sur les frames/labels/entries/text."""
         theme = THEMES.get(theme_name)
         if not theme:
             return
@@ -405,42 +500,69 @@ class App(tk.Tk):
         FIELD_FG = theme["FIELD_FG"]
         ACCENT = theme["ACCENT"]
 
-        # Fond global (tk)
         self.configure(bg=BG)
 
-        # ttk styles
         self.style.configure("TFrame", background=BG)
         self.style.configure("TLabel", background=BG, foreground=FG)
         self.style.configure("TLabelframe", background=BG, foreground=FG)
         self.style.configure("TLabelframe.Label", background=BG, foreground=FG)
 
-        # Champs
         self.style.configure("TEntry", fieldbackground=FIELD, foreground=FIELD_FG)
         self.style.configure("TCombobox", fieldbackground=FIELD, foreground=FIELD_FG)
 
-        # Text widget (tk)
         self.txt.configure(bg=FIELD, fg=FIELD_FG, insertbackground=ACCENT)
 
-        # Accent tag (si besoin)
-        try:
-            self.txt.tag_configure("accent", foreground=ACCENT)
-        except Exception:
-            pass
-
-        # Notebook : essaye de coller au thème
         try:
             self.style.configure("TNotebook", background=BG, borderwidth=0)
             self.style.configure("TNotebook.Tab", background=PANEL, foreground=FG, padding=(10, 6))
-            self.style.map("TNotebook.Tab",
-                           background=[("selected", BG)],
-                           foreground=[("selected", FG)])
+            self.style.map(
+                "TNotebook.Tab",
+                background=[("selected", BG)],
+                foreground=[("selected", FG)]
+            )
         except Exception:
             pass
+
+    # -------------- Format UI ----------------
+
+    def _on_format_change(self, _event=None):
+        label = self.cb_format.get().strip()
+        key = self._format_label_to_key.get(label, "mp3")
+        self.audio_format_var.set(key)
+        self._update_advanced_controls()
+
+    def _update_advanced_controls(self):
+        fmt = self.audio_format_var.get().strip().lower()
+
+        # cache tout
+        for w in (self.w_mp3, self.w_aac, self.w_opus, self.w_flac, self.w_ogg, self.w_wav):
+            w.grid_forget()
+
+        if fmt == "mp3":
+            self.adv_desc.configure(text="MP3 : réglage VBR (qualité).")
+            self.w_mp3.grid(row=0, column=0, sticky="w")
+        elif fmt == "m4a":
+            self.adv_desc.configure(text="M4A (AAC) : réglage du bitrate.")
+            self.w_aac.grid(row=0, column=0, sticky="w")
+        elif fmt == "opus":
+            self.adv_desc.configure(text="OPUS : réglage du bitrate (excellent pour la voix).")
+            self.w_opus.grid(row=0, column=0, sticky="w")
+        elif fmt == "flac":
+            self.adv_desc.configure(text="FLAC : compression sans perte (niveau).")
+            self.w_flac.grid(row=0, column=0, sticky="w")
+        elif fmt == "ogg":
+            self.adv_desc.configure(text="OGG (Vorbis) : réglage de la qualité.")
+            self.w_ogg.grid(row=0, column=0, sticky="w")
+        elif fmt == "wav":
+            self.adv_desc.configure(text="WAV : sortie brute (non compressée).")
+            self.w_wav.grid(row=0, column=0, sticky="w")
+        else:
+            self.adv_desc.configure(text="Réglage avancé :")
+            self.w_mp3.grid(row=0, column=0, sticky="w")
 
     # ---------------- URL rows ----------------
 
     def _rebuild_url_entries(self):
-        # Clear container
         for child in self.frm_url_entries.winfo_children():
             child.destroy()
         self.url_entries.clear()
@@ -485,6 +607,15 @@ class App(tk.Tk):
         self.txt.see("end")
         self.txt.configure(state="disabled")
 
+    def _ffmpeg_has_encoder(self, encoder_name: str) -> bool:
+        if which_or_none("ffmpeg") is None:
+            return False
+        try:
+            out = subprocess.check_output(["ffmpeg", "-hide_banner", "-encoders"], text=True, stderr=subprocess.STDOUT)
+            return encoder_name in out
+        except Exception:
+            return False
+
     def _check_tools(self):
         missing = []
         if which_or_none("ffmpeg") is None:
@@ -503,12 +634,16 @@ class App(tk.Tk):
             self.log("   - Assurez-vous que ffmpeg + ffprobe sont accessibles via le PATH (/usr/local/bin).")
         else:
             self.log("✅ Outils détectés : yt-dlp (module), ffmpeg, ffprobe.")
+            if self.has_aac_at:
+                self.log("🎛️ Encoder détecté : aac_at (AudioToolbox) — utilisé pour M4A(AAC) sur macOS.")
         self.log(f"📁 Dossier de sortie par défaut : {self.outdir_var.get()}")
 
     # ----------------- Run logic -----------------
 
     def start(self):
-        # IMPORTANT : on force toujours le dossier final "KLmp3-AAMMJJ"
+        # (Option UX) Toujours revenir sur Général quand on démarre (pour voir le journal)
+        self.nb.select(self.tab_general)
+
         base_out = self.outdir_var.get().strip()
         if not base_out:
             messagebox.showwarning("Dossier manquant", "Veuillez choisir un dossier de sortie.")
@@ -522,7 +657,6 @@ class App(tk.Tk):
             outdir = os.path.join(base_out, expected_suffix)
             self.outdir_var.set(outdir)
 
-        # Build queue
         urls = [v.get().strip() for v in self.url_vars]
         urls = [u for u in urls if u]
 
@@ -537,7 +671,6 @@ class App(tk.Tk):
                 messagebox.showerror("Erreur dossier", f"Impossible de créer le dossier :\n{outdir}\n\n{e}")
                 return
 
-        # Basic validation prompt if strange URLs exist
         weird = [u for u in urls if not (is_twitch(u) or is_youtube(u))]
         if weird:
             if not messagebox.askyesno(
@@ -547,13 +680,11 @@ class App(tk.Tk):
             ):
                 return
 
-        # Disable UI
         self.btn_start.configure(state="disabled")
         self.btn_stop.configure(state="normal")
         self.stop_flag.clear()
         self.progress.start(10)
 
-        # Start worker (queue)
         self.worker_thread = threading.Thread(target=self._worker_queue, args=(urls, outdir), daemon=True)
         self.worker_thread.start()
 
@@ -575,11 +706,7 @@ class App(tk.Tk):
     def _worker_queue(self, urls: list[str], outdir: str):
         try:
             fmt = self.audio_format_var.get().strip().lower()
-            q = self.mp3_quality_var.get().strip()
             keep_inter = self.keep_intermediate_var.get()
-
-            # Tout en vrac dans outdir (pas de sous-dossiers)
-            outtmpl = os.path.join(outdir, "%(title).200s [%(id)s].%(ext)s")
 
             for idx, url in enumerate(urls, start=1):
                 if self.stop_flag.is_set():
@@ -591,11 +718,11 @@ class App(tk.Tk):
                 self.log(f"URL : {url}")
 
                 if is_twitch(url):
-                    self.log("🎯 Plateforme détectée : Twitch (VOD) — stratégie 'Audio_Only puis conversion locale'")
-                    ok, final_msg = self._twitch_pipeline(url, outtmpl, fmt, q, keep_inter)
+                    self.log("🎯 Plateforme détectée : Twitch (VOD) — téléchargement Audio_Only")
+                    ok, final_msg = self._pipeline_download_and_convert(url, outdir, fmt, keep_inter, platform="twitch")
                 else:
-                    self.log("🎯 Plateforme détectée : YouTube (ou autre) — stratégie extraction directe")
-                    ok, final_msg = self._youtube_pipeline(url, outtmpl, fmt, q)
+                    self.log("🎯 Plateforme détectée : YouTube (ou autre) — téléchargement bestaudio")
+                    ok, final_msg = self._pipeline_download_and_convert(url, outdir, fmt, keep_inter, platform="youtube")
 
                 if not ok:
                     self.after(0, self._finish, False, final_msg)
@@ -606,37 +733,55 @@ class App(tk.Tk):
         except Exception as e:
             self.after(0, self._finish, False, str(e))
 
-    def _youtube_pipeline(self, url: str, outtmpl: str, fmt: str, q: str):
-        base_cmd = [
+    # -------------- Download + Convert (unifié) --------------
+
+    def _pipeline_download_and_convert(self, url: str, outdir: str, fmt: str, keep_inter: bool, platform: str):
+        """
+        Télécharge un fichier audio (intermédiaire) avec yt-dlp, puis convertit avec ffmpeg.
+        """
+        # Template intermédiaire : on garde l'extension d'origine
+        outtmpl = os.path.join(outdir, "%(title).200s [%(id)s].%(ext)s")
+
+        ok, downloaded_path = self._download_audio(url, outtmpl, platform=platform)
+        if not ok:
+            return False, downloaded_path  # message d'erreur
+
+        self.log(f"📦 Intermédiaire : {downloaded_path}")
+
+        ok2, msg_or_final = self._convert_audio(downloaded_path, fmt)
+        if not ok2:
+            return False, msg_or_final
+
+        final_path = msg_or_final
+        self.log(f"🎧 Sortie : {final_path}")
+
+        if not keep_inter:
+            self._safe_remove(downloaded_path)
+
+        return True, "OK"
+
+    def _download_audio(self, url: str, outtmpl: str, platform: str):
+        """
+        Retourne (ok, path_ou_message).
+        """
+        # yt-dlp : on ne convertit pas ici, on télécharge la meilleure piste audio.
+        # Twitch : Audio_Only
+        # YouTube : bestaudio/best
+        if platform == "twitch":
+            fmt_sel = "Audio_Only"
+        else:
+            fmt_sel = "bestaudio/best"
+
+        cmd = [
             sys.executable, "-m", "yt_dlp", url,
+            "-f", fmt_sel,
             "-o", outtmpl,
             "--newline",
-            "--no-warnings"
+            "--no-warnings",
         ]
-
-        if fmt == "mp3":
-            cmd = base_cmd + ["-x", "--audio-format", "mp3", "--audio-quality", q]
-        else:
-            cmd = base_cmd + ["-x", "--audio-format", "m4a"]
 
         self.log("▶️ yt-dlp : " + " ".join(cmd))
-        rc = run_subprocess(cmd, self.log, self.stop_flag)
-        if rc == 0:
-            return True, "Audio récupéré avec succès."
-        if rc == 130:
-            return False, "Arrêté par l’utilisateur."
-            return False, f"yt-dlp a échoué (code {rc})."
 
-    def _twitch_pipeline(self, url: str, outtmpl: str, fmt: str, q: str, keep_inter: bool):
-        cmd_dl = [
-            sys.executable, "-m", "yt_dlp", url,
-            "-f", "Audio_Only",
-            "-o", outtmpl,
-            "--newline",
-            "--no-warnings"
-        ]
-
-        self.log("▶️ yt-dlp (Audio_Only) : " + " ".join(cmd_dl))
         downloaded_path = None
         dest_re = re.compile(r"Destination:\s(.+)$")
 
@@ -647,74 +792,100 @@ class App(tk.Tk):
             if m:
                 downloaded_path = m.group(1).strip()
 
-        rc = run_subprocess(cmd_dl, on_line, self.stop_flag)
+        rc = run_subprocess(cmd, on_line, self.stop_flag)
+        if rc == 130:
+            return False, "Arrêté par l’utilisateur."
         if rc != 0:
-            if rc == 130:
-                return False, "Arrêté par l’utilisateur."
-            return False, f"Téléchargement Twitch échoué (code {rc})."
+            return False, f"yt-dlp a échoué (code {rc})."
 
+        # fallback : si destination non détectée, on cherche le fichier le plus récent dans outdir
         if not downloaded_path or not os.path.isfile(downloaded_path):
-            self.log("⚠️ Chemin de destination non détecté — recherche du fichier le plus récent…")
             folder = os.path.dirname(outtmpl)
+            if not os.path.isdir(folder):
+                folder = os.path.dirname(folder)
             candidates = []
-            for name in os.listdir(folder):
-                if name.lower().endswith((".mp4", ".m4a", ".webm", ".mkv")):
-                    p = os.path.join(folder, name)
-                    candidates.append((os.path.getmtime(p), p))
+            try:
+                for name in os.listdir(folder):
+                    if any(name.lower().endswith(ext) for ext in (".m4a", ".mp4", ".webm", ".mkv", ".mp3", ".aac", ".ogg", ".opus")):
+                        p = os.path.join(folder, name)
+                        candidates.append((os.path.getmtime(p), p))
+            except Exception:
+                candidates = []
+
             if candidates:
                 downloaded_path = sorted(candidates, reverse=True)[0][1]
 
         if not downloaded_path or not os.path.isfile(downloaded_path):
-            return False, "Impossible de trouver le fichier téléchargé (Audio_Only)."
+            return False, "Impossible de trouver le fichier téléchargé."
 
-        self.log(f"📦 Fichier intermédiaire : {downloaded_path}")
+        return True, downloaded_path
 
-        base_name, _ext = os.path.splitext(downloaded_path)
+    def _convert_audio(self, in_path: str, fmt: str):
+        """
+        Convertit in_path -> format cible.
+        Retourne (ok, out_path_ou_message).
+        """
+        base_name, _ext = os.path.splitext(in_path)
 
-        if fmt == "m4a":
-            out_audio = base_name + ".m4a"
-            cmd_ff = [
-                "ffmpeg", "-y", "-fflags", "+genpts",
-                "-i", downloaded_path,
-                "-map", "0:a", "-vn",
-                "-c:a", "copy",
-                out_audio
-            ]
-            self.log("▶️ ffmpeg (mp4→m4a sans perte) : " + " ".join(cmd_ff))
-            rc2 = run_subprocess(cmd_ff, self.log, self.stop_flag)
+        # Paramètres par format
+        if fmt == "mp3":
+            out_path = base_name + ".mp3"
+            codec = "libmp3lame"
+            args = ["-q:a", self.mp3_quality_var.get().strip()]
 
-            if rc2 == 0:
-                if not keep_inter:
-                    self._safe_remove(downloaded_path)
-                return True, f"Audio prêt : {out_audio}"
+        elif fmt == "m4a":
+            out_path = base_name + ".m4a"
+            codec = "aac_at" if (sys.platform == "darwin" and self.has_aac_at) else "aac"
+            bitrate = self.aac_bitrate_var.get().strip()
+            args = ["-b:a", bitrate]
 
-            if rc2 == 130:
-                return False, "Arrêté par l’utilisateur."
+        elif fmt == "opus":
+            out_path = base_name + ".opus"
+            codec = "libopus"
+            bitrate = self.opus_bitrate_var.get().strip()
+            args = ["-b:a", bitrate]
 
-            return False, f"ffmpeg a échoué (code {rc2})."
+        elif fmt == "flac":
+            out_path = base_name + ".flac"
+            codec = "flac"
+            level = self.flac_level_var.get().strip()
+            args = ["-compression_level", level]
 
-        # --- Sinon : conversion MP3 ---
-        out_audio = base_name + ".mp3"
+        elif fmt == "ogg":
+            out_path = base_name + ".ogg"
+            codec = "libvorbis"
+            q = self.vorbis_quality_var.get().strip()
+            args = ["-q:a", q]
+
+        elif fmt == "wav":
+            out_path = base_name + ".wav"
+            codec = "pcm_s16le"
+            args = []
+
+        else:
+            return False, f"Format inconnu : {fmt}"
+
+        # Si l'extension est déjà la bonne, on peut juste renvoyer le fichier tel quel,
+        # MAIS attention : ce n'est pas forcément le même codec. On garde la conversion
+        # pour être certain du format final (cohérence).
         cmd_ff = [
-            "ffmpeg", "-y", "-fflags", "+genpts",
-            "-i", downloaded_path,
-            "-map", "0:a", "-vn",
-            "-c:a", "libmp3lame",
-            "-q:a", q,
-            out_audio
+            "ffmpeg", "-y",
+            "-i", in_path,
+            "-map", "0:a:0",
+            "-vn",
+            "-c:a", codec,
+            *args,
+            out_path
         ]
-        self.log("▶️ ffmpeg (mp4→mp3) : " + " ".join(cmd_ff))
-        rc2 = run_subprocess(cmd_ff, self.log, self.stop_flag)
 
-        if rc2 == 0:
-            if not keep_inter:
-                self._safe_remove(downloaded_path)
-            return True, f"MP3 prêt : {out_audio}"
+        self.log("▶️ ffmpeg : " + " ".join(cmd_ff))
+        rc = run_subprocess(cmd_ff, self.log, self.stop_flag)
 
-        if rc2 == 130:
+        if rc == 0 and os.path.isfile(out_path):
+            return True, out_path
+        if rc == 130:
             return False, "Arrêté par l’utilisateur."
-
-        return False, f"ffmpeg a échoué (code {rc2})."
+        return False, f"ffmpeg a échoué (code {rc})."
 
     def _safe_remove(self, path: str):
         try:
