@@ -7,7 +7,9 @@ KLmp3 - Extracteur audio YouTube/Twitch (Tkinter)
 - YouTube : bestaudio/best
 - Twitch VOD : Audio_Only
 Notes:
-- Nécessite: yt-dlp + ffmpeg + ffprobe (dans le PATH ou dans tools/<platform>/)
+- Nécessite: ffmpeg + ffprobe (dans le PATH ou dans tools/<platform>/).
+- yt-dlp est utilisé via le module Python "yt_dlp" (recommandé pour la distribution).
+  En secours, un binaire "yt-dlp" dans le PATH peut aussi être utilisé.
 - Interface en français avec vouvoiement (préférence utilisateur)
 """
 
@@ -167,6 +169,21 @@ def _is_executable(path: str) -> bool:
     return os.path.isfile(path) and os.access(path, os.X_OK)
 
 
+
+
+def ytdlp_module_available() -> bool:
+    """Retourne True si le module Python yt_dlp est importable.
+
+    Pour la distribution (Option 1), on privilégie le module plutôt que le binaire yt-dlp,
+    afin d'éviter les soucis d'embarquement PyInstaller sur macOS.
+    """
+    try:
+        import yt_dlp  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
 def find_ytdlp_tools_first() -> ToolPath:
     """
     Stratégie :
@@ -271,9 +288,15 @@ class App(tk.Tk):
         # UI refs
         self._logo_img = None  # keep ref
         self.has_aac_at = False
-        # Localise yt-dlp (PATH sinon tools/)
-        self.ytdlp = find_ytdlp_tools_first()
-        self.ytdlp_path = self.ytdlp.path
+
+        # yt-dlp : Option 1 (distribution) => utiliser le module Python yt_dlp si disponible.
+        # Secours : binaire yt-dlp dans le PATH (ou tools/<platform>/ en mode dev).
+        self.ytdlp_mode = "module" if ytdlp_module_available() else "binary"
+        self.ytdlp = None
+        self.ytdlp_path = None
+        if self.ytdlp_mode == "binary":
+            self.ytdlp = find_ytdlp_tools_first()
+            self.ytdlp_path = self.ytdlp.path
 
         self._build_ui()
 
@@ -698,13 +721,15 @@ class App(tk.Tk):
         if not self.ffprobe_path:
             missing.append("ffprobe")
 
-        # yt-dlp via PATH ou tools/
-        if not getattr(self, "ytdlp_path", None):
+        # yt-dlp : module Python (recommandé) ou binaire (secours)
+        ytdlp_ok = (getattr(self, "ytdlp_mode", "binary") == "module") or bool(getattr(self, "ytdlp_path", None))
+        if not ytdlp_ok:
             missing.append("yt-dlp")
 
         if missing:
             self.log("⚠️ Outils manquants : " + ", ".join(missing))
-            self.log("   - Installez yt-dlp (binaire) OU mettez-le dans tools/<platform>/")
+            self.log("   - Installez le module Python yt-dlp (recommandé) : python -m pip install -U yt-dlp")
+            self.log("   - (secours) installez le binaire yt-dlp dans le PATH")
             self.log("   - Installez ffmpeg/ffprobe OU mettez-les dans tools/<platform>/")
         else:
             # info sur la source
@@ -712,11 +737,13 @@ class App(tk.Tk):
                 self.log("📦 ffmpeg/ffprobe embarqués : utilisés depuis tools/")
             else:
                 self.log("🧭 ffmpeg/ffprobe : trouvés dans le PATH")
-
-            if getattr(self, "ytdlp", None) and self.ytdlp.source == "TOOLS":
-                self.log("📦 yt-dlp embarqué : utilisé depuis tools/")
+            if getattr(self, "ytdlp_mode", "binary") == "module":
+                self.log("🐍 yt-dlp : module Python (yt_dlp)")
             else:
-                self.log("🧭 yt-dlp : trouvé dans le PATH")
+                if getattr(self, "ytdlp", None) and self.ytdlp.source == "TOOLS":
+                    self.log("📦 yt-dlp embarqué : utilisé depuis tools/")
+                else:
+                    self.log("🧭 yt-dlp : trouvé dans le PATH")
 
             self.log("✅ Outils détectés : yt-dlp, ffmpeg, ffprobe.")
 
@@ -865,34 +892,114 @@ class App(tk.Tk):
         else:
             fmt_sel = "bestaudio/best"
 
-        if not getattr(self, 'ytdlp_path', None):
-            return False, 'yt-dlp introuvable. Placez le binaire dans tools/<platform>/ ou installez-le dans le PATH.'
+        # yt-dlp : Option 1 (distribution) => utiliser l'API Python du module yt_dlp.
+        # IMPORTANT : dans une app PyInstaller "windowed", appeler `sys.executable -m yt_dlp`
+        # relance l'exécutable (et donc une 2e fenêtre) au lieu de lancer un interpréteur Python.
+        # Donc : si le module est dispo -> API. Sinon -> binaire dans le PATH.
 
-        cmd = [
-            self.ytdlp_path, url,
-            '-f', fmt_sel,
-            '-o', outtmpl,
-            '--newline',
-            '--no-warnings',
-        ]
-
-        self.log("▶️ yt-dlp : " + " ".join(cmd))
+        if getattr(self, "ytdlp_mode", "binary") == "module":
+            try:
+                import yt_dlp
+                from yt_dlp.utils import DownloadCancelled
+            except Exception:
+                # On retombe sur le mode binaire ci-dessous
+                self.ytdlp_mode = "binary"
 
         downloaded_path = None
-        dest_re = re.compile(r"Destination:\s(.+)$")
 
-        def on_line(line: str):
-            nonlocal downloaded_path
-            self.log(line)
-            m = dest_re.search(line)
-            if m:
-                downloaded_path = m.group(1).strip()
+        if getattr(self, "ytdlp_mode", "binary") == "module":
+            self.log("▶️ yt-dlp (module) : téléchargement…")
 
-        rc = run_subprocess(cmd, on_line, self.stop_flag)
-        if rc == 130:
-            return False, "Arrêté par l’utilisateur."
-        if rc != 0:
-            return False, f"yt-dlp a échoué (code {rc})."
+            def hook(d):
+                nonlocal downloaded_path
+                # Annulation utilisateur
+                if callable(self.stop_flag) and self.stop_flag():
+                    raise DownloadCancelled()
+
+                status = d.get("status")
+                if status == "downloading":
+                    # Log léger (évite de spammer trop)
+                    pct = d.get("_percent_str")
+                    spd = d.get("_speed_str")
+                    eta = d.get("_eta_str")
+                    msg = "⬇️"
+                    if pct:
+                        msg += f" {pct}"
+                    if spd:
+                        msg += f" {spd}"
+                    if eta:
+                        msg += f" ETA {eta}"
+                    self.log(msg)
+
+                elif status == "finished":
+                    downloaded_path = d.get("filename")
+                    if downloaded_path:
+                        self.log(f"✅ Téléchargé : {downloaded_path}")
+
+            class _YDLLogger:
+                def __init__(self, log_fn):
+                    self._log = log_fn
+                def debug(self, msg):
+                    # yt_dlp envoie beaucoup de debug; on filtre
+                    if msg and ("[download]" in msg or "Destination" in msg or "Merging" in msg):
+                        self._log(msg)
+                def warning(self, msg):
+                    if msg:
+                        self._log("⚠️ " + msg)
+                def error(self, msg):
+                    if msg:
+                        self._log("❌ " + msg)
+
+            ydl_opts = {
+                "format": fmt_sel,
+                "outtmpl": outtmpl,
+                "noplaylist": True,
+                "quiet": True,
+                "no_warnings": True,
+                "progress_hooks": [hook],
+                "logger": _YDLLogger(self.log),
+            }
+
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    rc = ydl.download([url])
+                if rc != 0:
+                    return False, f"yt-dlp (module) a échoué (code {rc})."
+            except DownloadCancelled:
+                return False, "Arrêté par l’utilisateur."
+            except Exception as e:
+                return False, f"yt-dlp (module) a échoué : {e}"
+
+        else:
+            # Secours : binaire yt-dlp dans le PATH
+            if not getattr(self, 'ytdlp_path', None):
+                return False, 'yt-dlp introuvable. Installez le module python yt-dlp (recommandé) ou installez le binaire yt-dlp dans le PATH.'
+
+            cmd = [
+                self.ytdlp_path,
+                url,
+                '-f', fmt_sel,
+                '-o', outtmpl,
+                '--newline',
+                '--no-warnings',
+            ]
+
+            self.log("▶️ yt-dlp (binaire) : " + " ".join(cmd))
+
+            dest_re = re.compile(r"Destination:\s(.+)$")
+
+            def on_line(line: str):
+                nonlocal downloaded_path
+                self.log(line)
+                m = dest_re.search(line)
+                if m:
+                    downloaded_path = m.group(1).strip()
+
+            rc = run_subprocess(cmd, on_line, self.stop_flag)
+            if rc == 130:
+                return False, "Arrêté par l’utilisateur."
+            if rc != 0:
+                return False, f"yt-dlp a échoué (code {rc})."
 
         # fallback : si destination non détectée, on cherche le fichier le plus récent dans outdir
         if not downloaded_path or not os.path.isfile(downloaded_path):
