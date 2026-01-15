@@ -60,3 +60,6 @@ Aucun accès réseau autre que celui de yt-dlp
 Le programme ne modifie pas le PATH système
 
 Fonctionne sous macOS / Linux / Windows
+
+
+
