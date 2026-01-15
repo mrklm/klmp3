@@ -7,7 +7,7 @@ KLmp3 - Extracteur audio YouTube/Twitch (Tkinter)
 - YouTube : bestaudio/best
 - Twitch VOD : Audio_Only
 Notes:
-- Nécessite: yt-dlp (module python) + ffmpeg + ffprobe accessibles (PATH)
+- Nécessite: yt-dlp + ffmpeg + ffprobe (dans le PATH ou dans tools/<platform>/)
 - Interface en français avec vouvoiement (préférence utilisateur)
 """
 
@@ -18,6 +18,8 @@ import shutil
 import threading
 import subprocess
 import random
+import platform
+from dataclasses import dataclass
 from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -126,6 +128,69 @@ def which_or_none(cmd: str) -> str | None:
     return shutil.which(cmd)
 
 
+
+
+@dataclass(frozen=True)
+class ToolPath:
+    path: str | None
+    source: str  # "PATH" or "TOOLS" or "MISSING"
+
+
+def _app_base_dir() -> str:
+    """
+    Dossier de base où se trouvent assets/ et tools/.
+    Compatible PyInstaller (sys._MEIPASS) si un jour tu bundles.
+    """
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return os.path.abspath(sys._MEIPASS)
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def _platform_tag() -> str:
+    """Retourne un tag de dossier dans tools/ (même logique que ffmpeg_locator)."""
+    arch = platform.machine().lower()
+    if arch in ("x86_64", "amd64"):
+        a = "x86_64"
+    elif arch in ("arm64", "aarch64"):
+        a = "arm64"
+    else:
+        a = arch
+
+    if sys.platform == "darwin":
+        return f"macos-{a}"
+    if sys.platform.startswith("win"):
+        return f"windows-{a}"
+    return f"linux-{a}"
+
+
+def _is_executable(path: str) -> bool:
+    return os.path.isfile(path) and os.access(path, os.X_OK)
+
+
+def find_ytdlp_tools_first() -> ToolPath:
+    """
+    Stratégie :
+    1) Cherche yt-dlp dans le PATH
+    2) Sinon cherche dans tools/<platform>/yt-dlp (ou .exe sur Windows)
+    """
+    p = shutil.which("yt-dlp")
+    if p:
+        return ToolPath(path=p, source="PATH")
+
+    base = _app_base_dir()
+    tag = _platform_tag()
+    name = "yt-dlp.exe" if sys.platform.startswith("win") else "yt-dlp"
+    cand = os.path.join(base, "tools", tag, name)
+
+    if _is_executable(cand):
+        return ToolPath(path=cand, source="TOOLS")
+
+    # Dernier recours : présent mais pas exécutable
+    if os.path.isfile(cand):
+        return ToolPath(path=cand, source="MISSING")
+
+    return ToolPath(path=None, source="MISSING")
+
 def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event) -> int:
     """Run a subprocess, stream stdout+stderr line by line to on_line()."""
     proc = subprocess.Popen(
@@ -155,10 +220,12 @@ def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event) -> int:
 
 
 def default_outdir() -> str:
-    """~/Desktop/KLmp3-AAMMJJ (tout en vrac dedans)"""
-    base = os.path.join(os.path.expanduser("~"), "Desktop")
-    yymmdd = datetime.now().strftime("%y%m%d")  # AAMMJJ
-    return os.path.join(base, f"KLmp3-{yymmdd}")
+    """~/klmp3/AA/MM/JJ (dossier daté, créé au lancement si besoin)"""
+    base = os.path.join(os.path.expanduser("~"), "klmp3")
+    yy = datetime.now().strftime("%y")
+    mm = datetime.now().strftime("%m")
+    dd = datetime.now().strftime("%d")
+    return os.path.join(base, yy, mm, dd)
 
 
 class App(tk.Tk):
@@ -204,11 +271,9 @@ class App(tk.Tk):
         # UI refs
         self._logo_img = None  # keep ref
         self.has_aac_at = False
-        
-        # Localise ffmpeg/ffprobe (PATH sinon tools/)
-        self.ff = find_ffmpeg_tools_first()
-        self.ffmpeg_path = self.ff.ffmpeg
-        self.ffprobe_path = self.ff.ffprobe
+        # Localise yt-dlp (PATH sinon tools/)
+        self.ytdlp = find_ytdlp_tools_first()
+        self.ytdlp_path = self.ytdlp.path
 
         self._build_ui()
 
@@ -253,7 +318,7 @@ class App(tk.Tk):
         frm_urls = ttk.Frame(self.tab_general)
         frm_urls.pack(fill="x", **pad)
 
-        ttk.Label(frm_urls, text="URL YouTube ou Twitch (VOD) :").grid(row=0, column=1, sticky="w")
+        ttk.Label(frm_urls, text="⬇️ Copiez l'URL ici:").grid(row=0, column=1, sticky="w")
 
         self.btn_add = ttk.Button(frm_urls, text="+", width=3, command=self.add_url_row)
         self.btn_add.grid(row=1, column=0, sticky="n", padx=(0, 8))
@@ -294,7 +359,9 @@ class App(tk.Tk):
 
         self.progress = ttk.Progressbar(frm_ctrl, mode="indeterminate")
         self.progress.grid(row=0, column=2, sticky="ew", padx=(14, 0))
-        frm_ctrl.columnconfigure(2, weight=1)
+        frm_ctrl.columnconfigure(0, weight=1)
+        frm_ctrl.columnconfigure(1, weight=1)
+        frm_ctrl.columnconfigure(2, weight=2)
 
         # Log
         self.frm_log = ttk.LabelFrame(self.tab_general, text="Journal")
@@ -320,7 +387,7 @@ class App(tk.Tk):
                 pass
 
         # Bigger buttons: padding increases height
-        self.style.configure("KLM.Big.TButton", padding=(14, 14))
+        self.style.configure("KLM.Big.TButton", padding=(18, 18))
 
     def _build_logo_and_theme_selector(self):
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -606,13 +673,15 @@ class App(tk.Tk):
 
     # -------------- Helpers --------------
 
+
     def choose_outdir(self):
+        """Choisit le dossier de sortie (sans rajouter de sous-dossier automatique)."""
         d = filedialog.askdirectory(
-            initialdir=self.outdir_var.get() or os.path.expanduser('~')
+            initialdir=self.outdir_var.get() or os.path.expanduser("~")
         )
         if d:
-            # L'utilisateur choisit le dossier final : on ne rajoute rien automatiquement.
             self.outdir_var.set(d)
+
 
     def log(self, msg: str):
         self.txt.configure(state="normal")
@@ -629,15 +698,13 @@ class App(tk.Tk):
         if not self.ffprobe_path:
             missing.append("ffprobe")
 
-        # yt-dlp (module python)
-        try:
-            import yt_dlp  # noqa: F401
-        except Exception:
-            missing.append("yt-dlp (module python)")
+        # yt-dlp via PATH ou tools/
+        if not getattr(self, "ytdlp_path", None):
+            missing.append("yt-dlp")
 
         if missing:
             self.log("⚠️ Outils manquants : " + ", ".join(missing))
-            self.log("   - Installez yt-dlp : python3 -m pip install --user -U yt-dlp")
+            self.log("   - Installez yt-dlp (binaire) OU mettez-le dans tools/<platform>/")
             self.log("   - Installez ffmpeg/ffprobe OU mettez-les dans tools/<platform>/")
         else:
             # info sur la source
@@ -645,17 +712,23 @@ class App(tk.Tk):
                 self.log("📦 ffmpeg/ffprobe embarqués : utilisés depuis tools/")
             else:
                 self.log("🧭 ffmpeg/ffprobe : trouvés dans le PATH")
-            self.log("✅ Outils détectés : yt-dlp (module), ffmpeg, ffprobe.")
 
-        self.log(f"📁 Dossier de sortie par défaut : {self.outdir_var.get()}")
+            if getattr(self, "ytdlp", None) and self.ytdlp.source == "TOOLS":
+                self.log("📦 yt-dlp embarqué : utilisé depuis tools/")
+            else:
+                self.log("🧭 yt-dlp : trouvé dans le PATH")
+
+            self.log("✅ Outils détectés : yt-dlp, ffmpeg, ffprobe.")
+
+        self.log(f"📁 Dossier de sortie actuel : {self.outdir_var.get()}")
 
     def _ffmpeg_has_encoder(self, encoder_name: str) -> bool:
-        """Retourne True si l'encodeur est présent dans la liste ffmpeg -encoders."""
+        """Retourne True si l'encodeur est listé par ffmpeg -encoders."""
         if not self.ffmpeg_path:
             return False
         try:
             out = subprocess.check_output(
-                [self.ffmpeg_path, '-hide_banner', '-encoders'],
+                [self.ffmpeg_path, "-hide_banner", "-encoders"],
                 text=True,
                 stderr=subprocess.STDOUT,
             )
@@ -673,7 +746,9 @@ class App(tk.Tk):
         if not base_out:
             messagebox.showwarning("Dossier manquant", "Veuillez choisir un dossier de sortie.")
             return
+
         outdir = base_out
+
 
         urls = [v.get().strip() for v in self.url_vars]
         urls = [u for u in urls if u]
@@ -790,12 +865,15 @@ class App(tk.Tk):
         else:
             fmt_sel = "bestaudio/best"
 
+        if not getattr(self, 'ytdlp_path', None):
+            return False, 'yt-dlp introuvable. Placez le binaire dans tools/<platform>/ ou installez-le dans le PATH.'
+
         cmd = [
-            sys.executable, "-m", "yt_dlp", url,
-            "-f", fmt_sel,
-            "-o", outtmpl,
-            "--newline",
-            "--no-warnings",
+            self.ytdlp_path, url,
+            '-f', fmt_sel,
+            '-o', outtmpl,
+            '--newline',
+            '--no-warnings',
         ]
 
         self.log("▶️ yt-dlp : " + " ".join(cmd))

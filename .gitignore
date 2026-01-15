@@ -5,6 +5,9 @@ venv/
 dist/
 build/
 tools/
+releases/
 *.spec
 .DS_Store
 Thumbs.db
+*.pdf
+*.odt
