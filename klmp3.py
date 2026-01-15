@@ -150,7 +150,7 @@ def default_outdir() -> str:
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("KLmp3 - v1.1")
+        self.title("KLmp3 - v1.2")
         self.geometry("820x620")
         self.minsize(780, 560)
 
@@ -182,6 +182,9 @@ class App(tk.Tk):
         self._check_tools()
         self._refresh_url_buttons()
 
+        # Onglet par défaut : Général
+        self.nb.select(self.tab_general)
+
     # ---------------- UI ----------------
 
     def _build_ui(self):
@@ -189,11 +192,23 @@ class App(tk.Tk):
 
         self._setup_styles()
 
-        # Logo (top) + Theme selector (top right)
+        # Logo (top) + Theme selector (top right) -> hors onglets
         self._build_logo_and_theme_selector()
 
+        # Notebook (tabs)
+        self.nb = ttk.Notebook(self)
+        self.nb.pack(fill="both", expand=True, padx=10, pady=(4, 10))
+
+        self.tab_general = ttk.Frame(self.nb)
+        self.tab_options = ttk.Frame(self.nb)
+
+        self.nb.add(self.tab_general, text="Général")
+        self.nb.add(self.tab_options, text="Options")
+
+        # ---- Contenu onglet Général ----
+
         # URLs block
-        frm_urls = ttk.Frame(self)
+        frm_urls = ttk.Frame(self.tab_general)
         frm_urls.pack(fill="x", **pad)
 
         self.lbl_urls = ttk.Label(frm_urls, text="URL YouTube ou Twitch (VOD) :")
@@ -214,7 +229,7 @@ class App(tk.Tk):
         self._rebuild_url_entries()
 
         # Output dir
-        frm_mid = ttk.Frame(self)
+        frm_mid = ttk.Frame(self.tab_general)
         frm_mid.pack(fill="x", **pad)
 
         self.lbl_out = ttk.Label(frm_mid, text="Dossier de sortie :")
@@ -227,51 +242,8 @@ class App(tk.Tk):
         btn_browse.grid(row=1, column=1, padx=(8, 0), sticky="ew")
         frm_mid.columnconfigure(0, weight=1)
 
-        # Options
-        self.frm_opts = ttk.LabelFrame(self, text="Options")
-        self.frm_opts.pack(fill="x", **pad)
-
-        fmt_row = ttk.Frame(self.frm_opts)
-        fmt_row.pack(fill="x", padx=10, pady=(8, 2))
-
-        self.lbl_fmt = ttk.Label(fmt_row, text="Format audio :")
-        self.lbl_fmt.pack(side="left")
-
-        self.rb_mp3 = ttk.Radiobutton(fmt_row, text="MP3", value="mp3", variable=self.audio_format_var)
-        self.rb_mp3.pack(side="left", padx=(10, 0))
-
-        self.rb_m4a = ttk.Radiobutton(fmt_row, text="M4A (sans perte / recommandé)", value="m4a", variable=self.audio_format_var)
-        self.rb_m4a.pack(side="left", padx=(10, 0))
-
-        q_row = ttk.Frame(self.frm_opts)
-        q_row.pack(fill="x", padx=10, pady=2)
-
-        self.lbl_q = ttk.Label(q_row, text="Qualité MP3 (VBR) :")
-        self.lbl_q.pack(side="left")
-
-        self.cb_q = ttk.Combobox(
-            q_row,
-            width=6,
-            textvariable=self.mp3_quality_var,
-            values=["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
-            state="readonly",
-        )
-        self.cb_q.pack(side="left", padx=(10, 0))
-
-        self.lbl_q_hint = ttk.Label(q_row, text="(0 = meilleure qualité, 9 = plus léger)")
-        self.lbl_q_hint.pack(side="left", padx=(10, 0))
-
-        k_row = ttk.Frame(self.frm_opts)
-        k_row.pack(fill="x", padx=10, pady=(2, 8))
-        self.chk_keep = ttk.Checkbutton(
-            k_row,
-            text="Conserver le fichier intermédiaire (utile pour Twitch / debug)",
-            variable=self.keep_intermediate_var
-        )
-        self.chk_keep.pack(side="left")
-
         # Controls (bigger buttons)
-        frm_ctrl = ttk.Frame(self)
+        frm_ctrl = ttk.Frame(self.tab_general)
         frm_ctrl.pack(fill="x", **pad)
 
         self.btn_start = ttk.Button(frm_ctrl, text="Démarrer", command=self.start, style="KLM.Big.TButton")
@@ -290,14 +262,17 @@ class App(tk.Tk):
         self.progress.grid(row=0, column=2, sticky="ew", padx=(14, 0))
         frm_ctrl.columnconfigure(2, weight=1)
 
-        # Log
-        self.frm_log = ttk.LabelFrame(self, text="Journal")
+        # Log (dans Général)
+        self.frm_log = ttk.LabelFrame(self.tab_general, text="Journal")
         self.frm_log.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
-        # +5 lignes : height=17 (au lieu de 12)
+        # Journal agrandi (+5 lignes)
         self.txt = tk.Text(self.frm_log, wrap="word", height=17, borderwidth=0, highlightthickness=0)
         self.txt.pack(fill="both", expand=True, padx=10, pady=10)
         self.txt.configure(state="disabled")
+
+        # ---- Contenu onglet Options ----
+        self._build_options_tab(self.tab_options)
 
     def _setup_styles(self):
         # IMPORTANT (macOS) : le thème "aqua" ignore beaucoup de backgrounds.
@@ -305,7 +280,6 @@ class App(tk.Tk):
         try:
             self.style.theme_use("clam")
         except Exception:
-            # fallback si "clam" indisponible (rare)
             try:
                 self.style.theme_use("alt")
             except Exception:
@@ -313,7 +287,6 @@ class App(tk.Tk):
 
         # Bigger buttons: padding increases height
         self.style.configure("KLM.Big.TButton", padding=(14, 14))
-
 
     def _build_logo_and_theme_selector(self):
         # Try to load assets/logo.png relative to this script
@@ -366,10 +339,49 @@ class App(tk.Tk):
             textvariable=self.theme_var,
             values=list(THEMES.keys()),
             state="readonly",
-            width=20
+            width=28
         )
         self.cb_theme.pack(anchor="ne")
         self.cb_theme.bind("<<ComboboxSelected>>", self._on_theme_change)
+
+    def _build_options_tab(self, parent):
+        pad = {"padx": 10, "pady": 8}
+
+        # On garde le bloc options "comme avant", mais dans l'onglet Options.
+        frm_opts = ttk.LabelFrame(parent, text="Options")
+        frm_opts.pack(fill="x", **pad)
+
+        fmt_row = ttk.Frame(frm_opts)
+        fmt_row.pack(fill="x", padx=10, pady=(8, 2))
+
+        ttk.Label(fmt_row, text="Format audio :").pack(side="left")
+        ttk.Radiobutton(fmt_row, text="MP3", value="mp3", variable=self.audio_format_var).pack(side="left", padx=(10, 0))
+        ttk.Radiobutton(fmt_row, text="M4A (sans perte / recommandé)", value="m4a", variable=self.audio_format_var).pack(side="left", padx=(10, 0))
+
+        q_row = ttk.Frame(frm_opts)
+        q_row.pack(fill="x", padx=10, pady=2)
+
+        ttk.Label(q_row, text="Qualité MP3 (VBR) :").pack(side="left")
+        q = ttk.Combobox(
+            q_row,
+            width=6,
+            textvariable=self.mp3_quality_var,
+            values=["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
+            state="readonly",
+        )
+        q.pack(side="left", padx=(10, 0))
+        ttk.Label(q_row, text="(0 = meilleure qualité, 9 = plus léger)").pack(side="left", padx=(10, 0))
+
+        k_row = ttk.Frame(frm_opts)
+        k_row.pack(fill="x", padx=10, pady=(2, 8))
+        ttk.Checkbutton(
+            k_row,
+            text="Conserver le fichier intermédiaire (utile pour Twitch / debug)",
+            variable=self.keep_intermediate_var
+        ).pack(side="left")
+
+        # Petite marge visuelle si l'onglet est grand
+        ttk.Frame(parent).pack(fill="both", expand=True)
 
     # -------------- Theme system --------------
 
@@ -379,7 +391,7 @@ class App(tk.Tk):
             self.apply_theme(name)
 
     def apply_theme(self, theme_name: str):
-        """Applique couleurs sur les frames/labels/entries/text. Simple et efficace."""
+        """Applique couleurs sur les frames/labels/entries/text."""
         theme = THEMES.get(theme_name)
         if not theme:
             return
@@ -397,32 +409,31 @@ class App(tk.Tk):
         self.configure(bg=BG)
 
         # ttk styles
-        # Frame / LabelFrame / Label
         self.style.configure("TFrame", background=BG)
         self.style.configure("TLabel", background=BG, foreground=FG)
         self.style.configure("TLabelframe", background=BG, foreground=FG)
         self.style.configure("TLabelframe.Label", background=BG, foreground=FG)
 
-        # Boutons
-        self.style.configure("TButton", padding=(10, 6))
-        self.style.map("TButton",
-                       foreground=[("disabled", "#888888")],
-                       background=[("active", PANEL)])
-
-        # Gros boutons : accent subtil via relief/padding (les couleurs de ttk buttons varient selon OS)
-        self.style.configure("KLM.Big.TButton", padding=(14, 14))
-
-        # Champs (Entry, Combobox)
+        # Champs
         self.style.configure("TEntry", fieldbackground=FIELD, foreground=FIELD_FG)
         self.style.configure("TCombobox", fieldbackground=FIELD, foreground=FIELD_FG)
 
-        # Text widget (tk) : couleurs directes
+        # Text widget (tk)
         self.txt.configure(bg=FIELD, fg=FIELD_FG, insertbackground=ACCENT)
 
-        # LabelFrame "Journal" : tweak visuel (selon thème)
-        # Pour ttk, on reste avec les styles. L'accent est utilisé pour la sélection / curseur.
+        # Accent tag (si besoin)
         try:
             self.txt.tag_configure("accent", foreground=ACCENT)
+        except Exception:
+            pass
+
+        # Notebook : essaye de coller au thème
+        try:
+            self.style.configure("TNotebook", background=BG, borderwidth=0)
+            self.style.configure("TNotebook.Tab", background=PANEL, foreground=FG, padding=(10, 6))
+            self.style.map("TNotebook.Tab",
+                           background=[("selected", BG)],
+                           foreground=[("selected", FG)])
         except Exception:
             pass
 
@@ -465,7 +476,6 @@ class App(tk.Tk):
     def choose_outdir(self):
         d = filedialog.askdirectory(initialdir=self.outdir_var.get() or os.path.expanduser("~"))
         if d:
-            # On force le nom final "KLmp3-AAMMJJ" dans le dossier choisi
             yymmdd = datetime.now().strftime("%y%m%d")
             self.outdir_var.set(os.path.join(d, f"KLmp3-{yymmdd}"))
 
@@ -504,8 +514,6 @@ class App(tk.Tk):
             messagebox.showwarning("Dossier manquant", "Veuillez choisir un dossier de sortie.")
             return
 
-        # Si l'utilisateur a choisi un dossier "parent", on assure le suffixe KLmp3-AAMMJJ
-        # Si base_out pointe déjà sur KLmp3-YYMMDD, on garde.
         yymmdd = datetime.now().strftime("%y%m%d")
         expected_suffix = f"KLmp3-{yymmdd}"
 
@@ -617,7 +625,7 @@ class App(tk.Tk):
             return True, "Audio récupéré avec succès."
         if rc == 130:
             return False, "Arrêté par l’utilisateur."
-        return False, f"yt-dlp a échoué (code {rc})."
+            return False, f"yt-dlp a échoué (code {rc})."
 
     def _twitch_pipeline(self, url: str, outtmpl: str, fmt: str, q: str, keep_inter: bool):
         cmd_dl = [
@@ -674,14 +682,18 @@ class App(tk.Tk):
             ]
             self.log("▶️ ffmpeg (mp4→m4a sans perte) : " + " ".join(cmd_ff))
             rc2 = run_subprocess(cmd_ff, self.log, self.stop_flag)
+
             if rc2 == 0:
                 if not keep_inter:
                     self._safe_remove(downloaded_path)
                 return True, f"Audio prêt : {out_audio}"
+
             if rc2 == 130:
                 return False, "Arrêté par l’utilisateur."
+
             return False, f"ffmpeg a échoué (code {rc2})."
 
+        # --- Sinon : conversion MP3 ---
         out_audio = base_name + ".mp3"
         cmd_ff = [
             "ffmpeg", "-y", "-fflags", "+genpts",
@@ -693,12 +705,15 @@ class App(tk.Tk):
         ]
         self.log("▶️ ffmpeg (mp4→mp3) : " + " ".join(cmd_ff))
         rc2 = run_subprocess(cmd_ff, self.log, self.stop_flag)
+
         if rc2 == 0:
             if not keep_inter:
                 self._safe_remove(downloaded_path)
             return True, f"MP3 prêt : {out_audio}"
+
         if rc2 == 130:
             return False, "Arrêté par l’utilisateur."
+
         return False, f"ffmpeg a échoué (code {rc2})."
 
     def _safe_remove(self, path: str):
@@ -710,9 +725,5 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
-    try:
-        app = App()
-        app.mainloop()
-    except Exception as e:
-        print("Erreur fatale :", e)
-        raise
+    app = App()
+    app.mainloop()
