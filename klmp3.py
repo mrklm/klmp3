@@ -255,7 +255,7 @@ class App(tk.Tk):
         frm_urls = ttk.Frame(self.tab_general)
         frm_urls.pack(fill="x", **pad)
 
-        ttk.Label(frm_urls, text="URL YouTube ou Twitch (VOD) :").grid(row=0, column=1, sticky="w")
+        ttk.Label(frm_urls, text="⬇️ Copiez l'URL ici:").grid(row=0, column=1, sticky="w")
 
         self.btn_add = ttk.Button(frm_urls, text="+", width=3, command=self.add_url_row)
         self.btn_add.grid(row=1, column=0, sticky="n", padx=(0, 8))

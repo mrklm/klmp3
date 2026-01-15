@@ -4,6 +4,7 @@ __pycache__/
 venv/
 dist/
 build/
+tools/
 *.spec
 .DS_Store
 Thumbs.db
