@@ -31,6 +31,28 @@ from ffmpeg_locator import find_ffmpeg_tools_first
 from PIL import Image, ImageTk
 
 
+def _setup_ssl_certificates() -> None:
+    """Configure un bundle de certificats CA pour éviter les erreurs SSL en app packagée.
+
+    Sur macOS (et parfois Windows), une app PyInstaller peut se retrouver sans accès
+    aux certificats racines du système. Le module `certifi` fournit un bundle CA fiable.
+    """
+    try:
+        import certifi  # type: ignore
+
+        ca_path = certifi.where()
+        # Utilisés par ssl/urllib et certains clients HTTP.
+        os.environ.setdefault("SSL_CERT_FILE", ca_path)
+        os.environ.setdefault("REQUESTS_CA_BUNDLE", ca_path)
+    except Exception:
+        # Si certifi n'est pas installé/embarqué, on ne casse pas le programme.
+        pass
+
+
+# Important : faire ça le plus tôt possible, avant tout accès réseau.
+_setup_ssl_certificates()
+
+
 MAX_URLS = 10
 
 # Bibli de thèmes (issus de Garage)
@@ -237,12 +259,17 @@ def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event) -> int:
 
 
 def default_outdir() -> str:
-    """~/klmp3/AA/MM/JJ (dossier daté, créé au lancement si besoin)"""
-    base = os.path.join(os.path.expanduser("~"), "klmp3")
-    yy = datetime.now().strftime("%y")
-    mm = datetime.now().strftime("%m")
-    dd = datetime.now().strftime("%d")
-    return os.path.join(base, yy, mm, dd)
+    """Dossier de sortie par défaut.
+
+    Souhait : **un seul dossier daté sur le Bureau** (pas de AA/MM/JJ imbriqués).
+    Exemple : ~/Desktop/klmp3-25-01-16
+    """
+    desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+    # macOS FR garde "Desktop" (Bureau = libellé Finder), mais on garde un fallback.
+    if not os.path.isdir(desktop):
+        desktop = os.path.expanduser("~")
+    stamp = datetime.now().strftime("%y-%m-%d")
+    return os.path.join(desktop, f"klmp3-{stamp}")
 
 
 class App(tk.Tk):
