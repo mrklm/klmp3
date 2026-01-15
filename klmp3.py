@@ -715,13 +715,8 @@ class App(tk.Tk):
             messagebox.showwarning("Dossier manquant", "Veuillez choisir un dossier de sortie.")
             return
 
-        yymmdd = datetime.now().strftime("%y%m%d")
-        expected_suffix = f"KLmp3-{yymmdd}"
-
         outdir = base_out
-        if os.path.basename(os.path.normpath(base_out)) != expected_suffix:
-            outdir = os.path.join(base_out, expected_suffix)
-            self.outdir_var.set(outdir)
+
 
         urls = [v.get().strip() for v in self.url_vars]
         urls = [u for u in urls if u]
