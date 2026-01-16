@@ -12,6 +12,25 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 
 ---
 
+📥 Téléchargement
+
+👉 Les versions compilées sont disponibles dans la section Releases :
+https://github.com/mrklm/klmp3/releases
+Applications standalone (recommandé)
+
+    Linux
+        (à venir)
+
+    macOS
+
+        `KLMP3-1.3-macOS-x86_64.dmg` 
+        `KLMP3-1.3-macOS-x86_64.zip`  
+
+    Windows
+        (à venir)
+
+---         
+
 ## Fonctionnalités
 
 🪠 Extraction audio YouTube et Twitch VOD
@@ -65,24 +84,6 @@ klmp3/
 - tools / ffmpeg + ffprobe
 
 --- 
-
-📥 Téléchargement
-
-👉 Les versions compilées sont disponibles dans la section Releases :
-https://github.com/mrklm/garage/releases
-Applications standalone (recommandé)
-
-    Linux
-        (à venir)
-
-    macOS
-    
-        KLMP3-1.3-macOS-x86_64.dmg [https://github.com/mrklm/klmp3/releases]
-        KLMP3-1.3-macOS-x86_64.zip [https://github.com/mrklm/klmp3/releases] 
-
-    Windows
-        (à venir)
-
 
 ✏️ Notes
 
