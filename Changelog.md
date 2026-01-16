@@ -4,11 +4,20 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 Le format est inspiré de Keep a Changelog et le versionnement suit une logique sémantique pragmatique.
 
 
-[0.1.3] – 2026-01-15
-
-Mise en place de l'autonaumie du programme : codec FFMPEG integré
+[0.1.4] – 2026-01-16
 
 Ajouté
+
+Mise en place de l'autonomie du programme : on embarque "Deno" 
+(Deno est le petit moteur JavaScript que yt-dlp utilise pour exécuter les scripts de YouTube (décryptage, challenges anti-bot), quand YouTube l’exige.)
+
+---
+
+[0.1.3] – 2026-01-15
+
+Ajouté
+
+Mise en place de l'autonomie du programme : codec FFMPEG integré
 
 --- 
 

@@ -230,6 +230,23 @@ def find_ytdlp_tools_first() -> ToolPath:
 
     return ToolPath(path=None, source="MISSING")
 
+
+
+def find_deno_tools_first() -> ToolPath:
+    """Cherche Deno dans tools/<platform>/ (pas dans le PATH volontairement)."""
+    base = _app_base_dir()
+    tag = _platform_tag()
+    name = "deno.exe" if sys.platform.startswith("win") else "deno"
+    cand = os.path.join(base, "tools", tag, name)
+
+    if _is_executable(cand):
+        return ToolPath(path=cand, source="TOOLS")
+
+    if os.path.isfile(cand):
+        # Fichier présent mais pas exécutable / pas trouvé
+        return ToolPath(path=cand, source="MISSING")
+
+    return ToolPath(path=None, source="MISSING")
 def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event) -> int:
     """Run a subprocess, stream stdout+stderr line by line to on_line()."""
     proc = subprocess.Popen(
@@ -279,7 +296,7 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLmp3 - v1.3")
+        self.title("KLmp3 - v1.5")
         self.geometry("820x620")
         self.minsize(780, 560)
 
@@ -316,16 +333,33 @@ class App(tk.Tk):
         self._logo_img = None  # keep ref
         self.has_aac_at = False
 
-        # yt-dlp : Option 1 (distribution) => utiliser le module Python yt_dlp si disponible.
-        # Secours : binaire yt-dlp dans le PATH (ou tools/<platform>/ en mode dev).
+        # Messages à afficher dans le journal après construction de l'UI
+        self._startup_msgs: list[str] = []
+
+        # yt-dlp : détection binaire
+        self.ytdlp = find_ytdlp_tools_first()
+        self.ytdlp_path = self.ytdlp.path
+
+        # Mode par défaut
         self.ytdlp_mode = "module" if ytdlp_module_available() else "binary"
-        self.ytdlp = None
-        self.ytdlp_path = None
-        if self.ytdlp_mode == "binary":
-            self.ytdlp = find_ytdlp_tools_first()
-            self.ytdlp_path = self.ytdlp.path
+
+        if getattr(sys, "frozen", False):
+            self.ytdlp_mode = "binary"
+            if not self.ytdlp_path:
+                self._startup_msgs.append("❌ Mode packagé : yt-dlp.exe manquant dans tools/<platform>/")
+
+
+        # --- Deno ---
+        self.deno = find_deno_tools_first()
+        self.deno_path = self.deno.path
 
         self._build_ui()
+
+        # Affiche les messages de démarrage une fois que le widget de log (self.txt) existe
+        for m in self._startup_msgs:
+            self.log(m)
+        self._startup_msgs.clear()
+
 
         # Détection encoder aac_at (macOS)
         self.has_aac_at = self._ffmpeg_has_encoder("aac_at")
@@ -416,8 +450,6 @@ class App(tk.Tk):
         # Log
         self.frm_log = ttk.LabelFrame(self.tab_general, text="Journal")
         self.frm_log.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-
-        # +5 lignes vs ancien (v1.2)
         self.txt = tk.Text(self.frm_log, wrap="word", height=17, borderwidth=0, highlightthickness=0)
         self.txt.pack(fill="both", expand=True, padx=10, pady=10)
         self.txt.configure(state="disabled")
@@ -742,6 +774,13 @@ class App(tk.Tk):
     def _check_tools(self):
         missing = []
 
+        # Deno : runtime JavaScript pour YouTube (JS challenges)
+        if not getattr(self, "deno_path", None):
+            self.log("ℹ️ Deno absent : certaines vidéos YouTube peuvent demander un challenge JS (mode dégradé)")
+        else:
+            self.log("📦 Deno embarqué : support YouTube (JS challenge)")
+
+
         # ffmpeg/ffprobe via PATH ou tools/
         if not self.ffmpeg_path:
             missing.append("ffmpeg")
@@ -919,6 +958,17 @@ class App(tk.Tk):
         else:
             fmt_sel = "bestaudio/best"
 
+
+        # For YouTube, on force le mode binaire (plus fiable pour cookies + JS challenges)
+        if platform == "youtube":
+            self.ytdlp_mode = "binary"
+
+
+        # lazy resolve yt-dlp path when switching to binary at runtime
+        if self.ytdlp_mode == "binary" and not getattr(self, "ytdlp_path", None):
+            self.ytdlp = find_ytdlp_tools_first()
+            self.ytdlp_path = self.ytdlp.path
+
         # yt-dlp : Option 1 (distribution) => utiliser l'API Python du module yt_dlp.
         # IMPORTANT : dans une app PyInstaller "windowed", appeler `sys.executable -m yt_dlp`
         # relance l'exécutable (et donc une 2e fenêtre) au lieu de lancer un interpréteur Python.
@@ -940,7 +990,7 @@ class App(tk.Tk):
             def hook(d):
                 nonlocal downloaded_path
                 # Annulation utilisateur
-                if callable(self.stop_flag) and self.stop_flag():
+                if getattr(self, 'stop_flag', None) is not None and self.stop_flag.is_set():
                     raise DownloadCancelled()
 
                 status = d.get("status")
@@ -998,18 +1048,27 @@ class App(tk.Tk):
                 return False, f"yt-dlp (module) a échoué : {e}"
 
         else:
-            # Secours : binaire yt-dlp dans le PATH
-            if not getattr(self, 'ytdlp_path', None):
-                return False, 'yt-dlp introuvable. Installez le module python yt-dlp (recommandé) ou installez le binaire yt-dlp dans le PATH.'
+            # Secours : binaire yt-dlp (PATH ou tools/<platform>/)
+            # IMPORTANT : en mode packagé (PyInstaller), sys.executable == l'app (.exe).
+            # Donc on INTERDIT le fallback `sys.executable -m yt_dlp` (sinon double instance).
+            frozen = getattr(sys, "frozen", False)
+            if frozen and not getattr(self, "ytdlp_path", None):
+                return False, "Mode packagé : yt-dlp.exe introuvable. Placez-le dans tools/<platform>/ (ex: tools/windows-x86_64/yt-dlp.exe)."
 
-            cmd = [
-                self.ytdlp_path,
+            cmd = [self.ytdlp_path] if getattr(self, "ytdlp_path", None) else [sys.executable, "-m", "yt_dlp"]
+            cmd += [
                 url,
                 '-f', fmt_sel,
                 '-o', outtmpl,
                 '--newline',
                 '--no-warnings',
             ]
+
+
+            if platform == "youtube":
+                cmd += ["--cookies-from-browser", "firefox"]
+                if getattr(self, "deno_path", None):
+                    cmd += ["--js-runtimes", f"deno:{self.deno_path}", "--remote-components", "ejs:github"]
 
             self.log("▶️ yt-dlp (binaire) : " + " ".join(cmd))
 
