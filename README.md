@@ -8,7 +8,7 @@ Objectif : récupérer rapidement de l’audio propre (MP3) sans dépendre d’u
 ## Aperçu
 
 ![Fenêtre general](screenshots/general.png)
-![Fenêtre options](screenshots/opions.png)
+![Fenêtre options](screenshots/options.png)
 
 ---
 
