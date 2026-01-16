@@ -4,6 +4,12 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 Le format est inspiré de Keep a Changelog et le versionnement suit une logique sémantique pragmatique.
 
 
+[0.1.5] – 2026-01-16
+
+Ajouté fonction cookies.txt pour eviter les popups de fenetres firefox sous windows
+
+---
+
 [0.1.4] – 2026-01-16
 
 Ajouté

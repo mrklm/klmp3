@@ -21,6 +21,7 @@ import threading
 import subprocess
 import random
 import platform
+import json
 from dataclasses import dataclass
 from datetime import datetime
 import tkinter as tk
@@ -289,6 +290,40 @@ def default_outdir() -> str:
     return os.path.join(desktop, f"klmp3-{stamp}")
 
 
+def _config_dir() -> str:
+    """Dossier de config utilisateur (écrivable), multi-OS."""
+    home = os.path.expanduser("~")
+    if sys.platform.startswith("win"):
+        base = os.environ.get("APPDATA") or os.path.join(home, "AppData", "Roaming")
+        return os.path.join(base, "KLMP3")
+    if sys.platform == "darwin":
+        return os.path.join(home, "Library", "Application Support", "KLMP3")
+    xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config")
+    return os.path.join(xdg, "klmp3")
+
+
+def _config_path() -> str:
+    return os.path.join(_config_dir(), "config.json")
+
+
+def _load_config() -> dict:
+    try:
+        with open(_config_path(), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_config(data: dict) -> None:
+    try:
+        os.makedirs(_config_dir(), exist_ok=True)
+        with open(_config_path(), "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -316,6 +351,15 @@ class App(tk.Tk):
 
         # UI vars
         self.outdir_var = tk.StringVar(value=default_outdir())
+
+        # Config persistée (config.json dans dossier utilisateur)
+        self._config = _load_config()
+
+        # YouTube : cookies.txt (optionnel) — évite l'ouverture furtive de Firefox
+        self.cookies_file_var = tk.StringVar(
+            value=str(self._config.get("youtube_cookies_file", "")).strip()
+        )
+
 
         # Format (6 formats) — MP3 par défaut
         self.audio_format_var = tk.StringVar(value="mp3")
@@ -765,6 +809,29 @@ class App(tk.Tk):
             self.outdir_var.set(d)
 
 
+    def choose_cookies_file(self):
+        """Sélectionne un fichier cookies.txt (YouTube) et le mémorise dans config.json."""
+        current = self.cookies_file_var.get().strip()
+        initial_dir = os.path.dirname(current) if current else os.path.join(os.path.expanduser("~"), "Downloads")
+        fpath = filedialog.askopenfilename(
+            title="Sélectionner un fichier cookies.txt",
+            initialdir=initial_dir if os.path.isdir(initial_dir) else os.path.expanduser("~"),
+            filetypes=[("cookies.txt", "*.txt"), ("Tous les fichiers", "*.*")],
+        )
+        if fpath:
+            self.cookies_file_var.set(fpath)
+            self._config["youtube_cookies_file"] = fpath
+            _save_config(self._config)
+            self.log("🍪 Cookies YouTube : fichier cookies.txt sélectionné.")
+
+    def clear_cookies_file(self):
+        """Efface le fichier cookies.txt et repasse en mode cookies navigateur."""
+        self.cookies_file_var.set("")
+        self._config["youtube_cookies_file"] = ""
+        _save_config(self._config)
+        self.log("🍪 Cookies YouTube : lecture depuis le navigateur (peut ouvrir Firefox).")
+
+
     def log(self, msg: str):
         self.txt.configure(state="normal")
         self.txt.insert("end", msg + "\n")
@@ -1066,7 +1133,13 @@ class App(tk.Tk):
 
 
             if platform == "youtube":
-                cmd += ["--cookies-from-browser", "firefox"]
+                cookies_file = getattr(self, "cookies_file_var", None)
+                cookies_path = cookies_file.get().strip() if cookies_file else ""
+                if cookies_path and os.path.isfile(cookies_path):
+                    cmd += ["--cookies", cookies_path]
+                else:
+                    cmd += ["--cookies-from-browser", "firefox"]
+
                 if getattr(self, "deno_path", None):
                     cmd += ["--js-runtimes", f"deno:{self.deno_path}", "--remote-components", "ejs:github"]
 
