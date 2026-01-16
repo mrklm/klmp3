@@ -1,3 +1,8 @@
+![Version](https://img.shields.io/badge/version-1.3-blue)
+![License](https://img.shields.io/badge/license-GPL--3.0-green)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
+![Python](https://img.shields.io/badge/python-3.9%2B-blue)
+
 ## 🔈️ KLmp3 📢
 
 Extracteur audio YouTube / Twitch simple et multi-OS, écrit en Python + Tkinter.
@@ -12,22 +17,22 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 
 ---
 
-📥 Téléchargement
+## 📥 Téléchargement
 
-👉 Les versions compilées sont disponibles dans la section Releases :
-https://github.com/mrklm/klmp3/releases
-Applications standalone (recommandé)
+👉 Les versions compilées sont disponibles ici :  
+🔗 [GitHub Releases – KLmp3](https://github.com/mrklm/klmp3/releases)
 
-    Linux
-        (à venir)
+### Applications standalone (recommandé)
 
-    macOS
+- 🐧 **Linux**  
+  *(à venir)*
 
-        `KLMP3-1.3-macOS-x86_64.dmg` 
-        `KLMP3-1.3-macOS-x86_64.zip`  
+- 🍎 **macOS**
+  - [KLMP3-1.3-macOS-x86_64.dmg](https://github.com/mrklm/klmp3/releases)
+  - [KLMP3-1.3-macOS-x86_64.zip](https://github.com/mrklm/klmp3/releases)
 
-    Windows
-        (à venir)
+- 🪟 **Windows**  
+  *(à venir)*
 
 ---         
 
