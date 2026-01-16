@@ -1,10 +1,18 @@
-🔈️ KLMP3 📢
+## 🔈️ KLMP3 📢
 
 Extracteur audio YouTube / Twitch simple et multi-OS, écrit en Python + Tkinter.
 Objectif : récupérer rapidement de l’audio propre (MP3) sans dépendre d’un environnement exotique.
 
+---
 
-Fonctionnalités
+## Aperçu
+
+![Fenêtre general](screenshots/general.png)
+![Fenêtre options](screenshots/opions.png)
+
+---
+
+## Fonctionnalités
 
 🪠 Extraction audio YouTube et Twitch VOD
 
@@ -20,7 +28,11 @@ Fonctionnalités
 
 🗒️ Journal d’exécution intégré
 
-Dépendances:
+🏳️‍🌈 Thèmes variiés: sombres, clairs et rigolos.
+
+---
+
+ ## 💊 Dépendances:
 
 Python ≥ 3.9
 
@@ -39,8 +51,9 @@ FFmpeg peut être :
 
 -ou placé dans tools/<platform>/
 
-Lancement
-python3 klmp3.py
+--- 
+
+## 🚀 Lancement: python3 klmp3.py
 
 Arborescence minimale
 klmp3/
@@ -53,7 +66,9 @@ klmp3/
       ├─ ffmpeg
       └─ ffprobe
 
-Notes
+---   
+
+✏️ Notes
 
 Aucun accès réseau autre que celui de yt-dlp
 
