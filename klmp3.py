@@ -354,13 +354,6 @@ class App(tk.Tk):
 
         # Config persistée (config.json dans dossier utilisateur)
         self._config = _load_config()
-
-        # YouTube : cookies.txt (optionnel) — évite l'ouverture furtive de Firefox
-        self.cookies_file_var = tk.StringVar(
-            value=str(self._config.get("youtube_cookies_file", "")).strip()
-        )
-
-
         # Format (6 formats) — MP3 par défaut
         self.audio_format_var = tk.StringVar(value="mp3")
 
@@ -680,37 +673,6 @@ class App(tk.Tk):
             text="Conserver le fichier intermédiaire (utile pour debug)",
             variable=self.keep_intermediate_var
         ).pack(side="left")
-
-        # --- Cookies YouTube (optionnel) ---
-        frm_cookies = ttk.LabelFrame(parent, text="YouTube : cookies (optionnel)")
-        frm_cookies.pack(fill="x", padx=10, pady=(0, 8))
-
-        ttk.Label(
-            frm_cookies,
-            text=(
-                "Certaines vidéos YouTube exigent une connexion (anti-bot).\n"
-                "• Recommandé : exportez un fichier cookies.txt depuis votre navigateur et sélectionnez-le ici.\n"
-                "• Sinon, KLMP3 lira les cookies du navigateur (peut ouvrir/fermer Firefox)."
-            ),
-            justify="left",
-        ).grid(row=0, column=0, columnspan=3, sticky="w", padx=10, pady=(8, 6))
-
-        ttk.Label(frm_cookies, text="Fichier cookies.txt :").grid(row=1, column=0, sticky="w", padx=10, pady=(0, 8))
-
-        ent_ck = ttk.Entry(frm_cookies, textvariable=self.cookies_file_var, width=60)
-        ent_ck.grid(row=1, column=1, sticky="ew", padx=(0, 8), pady=(0, 8))
-
-        ttk.Button(frm_cookies, text="Parcourir…", command=self.choose_cookies_file).grid(
-            row=1, column=2, sticky="ew", padx=(0, 10), pady=(0, 8)
-        )
-
-        ttk.Button(frm_cookies, text="Effacer", command=self.clear_cookies_file).grid(
-            row=2, column=2, sticky="e", padx=(0, 10), pady=(0, 10)
-        )
-
-        frm_cookies.columnconfigure(1, weight=1)
-
-
         ttk.Frame(parent).pack(fill="both", expand=True)
 
     # -------------- Theme system --------------
@@ -837,31 +799,6 @@ class App(tk.Tk):
         )
         if d:
             self.outdir_var.set(d)
-
-
-    def choose_cookies_file(self):
-        """Sélectionne un fichier cookies.txt (YouTube) et le mémorise dans config.json."""
-        current = self.cookies_file_var.get().strip()
-        initial_dir = os.path.dirname(current) if current else os.path.join(os.path.expanduser("~"), "Downloads")
-        fpath = filedialog.askopenfilename(
-            title="Sélectionner un fichier cookies.txt",
-            initialdir=initial_dir if os.path.isdir(initial_dir) else os.path.expanduser("~"),
-            filetypes=[("cookies.txt", "*.txt"), ("Tous les fichiers", "*.*")],
-        )
-        if fpath:
-            self.cookies_file_var.set(fpath)
-            self._config["youtube_cookies_file"] = fpath
-            _save_config(self._config)
-            self.log("🍪 Cookies YouTube : fichier cookies.txt sélectionné.")
-
-    def clear_cookies_file(self):
-        """Efface le fichier cookies.txt et repasse en mode cookies navigateur."""
-        self.cookies_file_var.set("")
-        self._config["youtube_cookies_file"] = ""
-        _save_config(self._config)
-        self.log("🍪 Cookies YouTube : lecture depuis le navigateur (peut ouvrir Firefox).")
-
-
     def log(self, msg: str):
         self.txt.configure(state="normal")
         self.txt.insert("end", msg + "\n")
@@ -1053,7 +990,7 @@ class App(tk.Tk):
         if platform == "twitch":
             fmt_sel = "Audio_Only"
         else:
-            fmt_sel = "bestaudio/best"
+            fmt_sel = "bestaudio[protocol!*=m3u8]/bestaudio/best"
 
 
         # For YouTube, on force le mode binaire (plus fiable pour cookies + JS challenges)
@@ -1133,6 +1070,7 @@ class App(tk.Tk):
                 "progress_hooks": [hook],
                 "logger": _YDLLogger(self.log),
             }
+            # Cookies YouTube : en pratique on passe par le mode binaire pour YouTube (cookies navigateur + JS challenges).
 
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -1152,7 +1090,8 @@ class App(tk.Tk):
             if frozen and not getattr(self, "ytdlp_path", None):
                 return False, "Mode packagé : yt-dlp.exe introuvable. Placez-le dans tools/<platform>/ (ex: tools/windows-x86_64/yt-dlp.exe)."
 
-            cmd = [self.ytdlp_path] if getattr(self, "ytdlp_path", None) else [sys.executable, "-m", "yt_dlp"]
+            cmd = [self.ytdlp_path, "--ignore-config"] if getattr(self, "ytdlp_path", None) else [sys.executable, "-m", "yt_dlp", "--ignore-config"]
+
             cmd += [
                 url,
                 '-f', fmt_sel,
@@ -1160,16 +1099,12 @@ class App(tk.Tk):
                 '--newline',
                 '--no-warnings',
             ]
-
-
             if platform == "youtube":
-                cookies_file = getattr(self, "cookies_file_var", None)
-                cookies_path = cookies_file.get().strip() if cookies_file else ""
-                if cookies_path and os.path.isfile(cookies_path):
-                    cmd += ["--cookies", cookies_path]
-                else:
-                    cmd += ["--cookies-from-browser", "firefox"]
+                # Cookies YouTube : lecture depuis le navigateur (Firefox)
+                cmd += ["--cookies-from-browser", "firefox"]
+                self.log("🍪 Cookies YouTube : lecture depuis le navigateur (Firefox)")
 
+                # JS challenges YouTube : nécessite un runtime JS (deno)
                 if getattr(self, "deno_path", None):
                     cmd += ["--js-runtimes", f"deno:{self.deno_path}", "--remote-components", "ejs:github"]
 

@@ -4,13 +4,13 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 Le format est inspiré de Keep a Changelog et le versionnement suit une logique sémantique pragmatique.
 
 
-[0.1.5] – 2026-01-16
+[1.5] – 2026-01-16
 
-Ajouté fonction cookies.txt pour eviter les popups de fenetres firefox sous windows
+rechherche de trucs pour eviter les popups de fenetres firefox sous windows
 
 ---
 
-[0.1.4] – 2026-01-16
+[1.4] – 2026-01-16
 
 Ajouté
 
@@ -19,7 +19,7 @@ Mise en place de l'autonomie du programme : on embarque "Deno"
 
 ---
 
-[0.1.3] – 2026-01-15
+[1.3] – 2026-01-15
 
 Ajouté
 
@@ -27,7 +27,7 @@ Mise en place de l'autonomie du programme : codec FFMPEG integré
 
 --- 
 
-[0.1.2] – 2026-01-15
+[1.2] – 2026-01-15
 
 Ajouté
 
@@ -35,7 +35,7 @@ Ajout de type d'exports : MP3 - FLAC - OGG - M4A - OPUS - WAV
 
 ---
 
-[0.1.1] – 2026-01-15
+[1.1] – 2026-01-15
 
 Ajouté
 
