@@ -681,6 +681,36 @@ class App(tk.Tk):
             variable=self.keep_intermediate_var
         ).pack(side="left")
 
+        # --- Cookies YouTube (optionnel) ---
+        frm_cookies = ttk.LabelFrame(parent, text="YouTube : cookies (optionnel)")
+        frm_cookies.pack(fill="x", padx=10, pady=(0, 8))
+
+        ttk.Label(
+            frm_cookies,
+            text=(
+                "Certaines vidéos YouTube exigent une connexion (anti-bot).\n"
+                "• Recommandé : exportez un fichier cookies.txt depuis votre navigateur et sélectionnez-le ici.\n"
+                "• Sinon, KLMP3 lira les cookies du navigateur (peut ouvrir/fermer Firefox)."
+            ),
+            justify="left",
+        ).grid(row=0, column=0, columnspan=3, sticky="w", padx=10, pady=(8, 6))
+
+        ttk.Label(frm_cookies, text="Fichier cookies.txt :").grid(row=1, column=0, sticky="w", padx=10, pady=(0, 8))
+
+        ent_ck = ttk.Entry(frm_cookies, textvariable=self.cookies_file_var, width=60)
+        ent_ck.grid(row=1, column=1, sticky="ew", padx=(0, 8), pady=(0, 8))
+
+        ttk.Button(frm_cookies, text="Parcourir…", command=self.choose_cookies_file).grid(
+            row=1, column=2, sticky="ew", padx=(0, 10), pady=(0, 8)
+        )
+
+        ttk.Button(frm_cookies, text="Effacer", command=self.clear_cookies_file).grid(
+            row=2, column=2, sticky="e", padx=(0, 10), pady=(0, 10)
+        )
+
+        frm_cookies.columnconfigure(1, weight=1)
+
+
         ttk.Frame(parent).pack(fill="both", expand=True)
 
     # -------------- Theme system --------------
