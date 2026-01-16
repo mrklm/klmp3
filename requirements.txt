@@ -1,0 +1,5 @@
+# --- Runtime / Dev dependencies for KLMP3 ---
+
+yt-dlp>=2024.01.01
+certifi>=2024.01.01
+Pillow>=9.0.0

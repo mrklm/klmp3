@@ -90,6 +90,29 @@ klmp3/
 
 --- 
 
+## 🧪 Utilisation depuis les sources (optionnel)
+
+Pour lancer KLMP3 depuis le code source ou contribuer au projet.
+
+### Pré-requis
+- Python ≥ 3.9
+- Git
+
+### Installation des dépendances
+```bash
+python -m pip install -r requirements.txt
+
+Lancement
+
+python klmp3.py
+
+🏗️ Build (développeurs)
+Dépendances de build
+
+python -m pip install -r build-requirements.txt
+
+---
+
 ✏️ Notes
 
 Aucun accès réseau autre que celui de yt-dlp

@@ -1,0 +1,4 @@
+# --- Build dependencies for KLMP3 (PyInstaller) ---
+
+pyinstaller>=6.0
+pyinstaller-hooks-contrib>=2024.0
