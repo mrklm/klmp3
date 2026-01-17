@@ -244,6 +244,8 @@ def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event) -> int:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         bufsize=1,
     )
     try:
@@ -263,7 +265,6 @@ def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event) -> int:
                 proc.stdout.close()
         except Exception:
             pass
-
 
 def default_outdir() -> str:
     """Dossier de sortie par défaut (un seul dossier daté sur le Bureau)."""
@@ -777,17 +778,6 @@ class App(tk.Tk):
         self.w_wav = ttk.Frame(self.adv_holder)
         ttk.Label(self.w_wav, text="WAV = non compressé (16-bit), pas de réglage.").grid(row=0, column=0, sticky="w")
 
-        # Keep intermediate
-        row_keep = ttk.Frame(frm_audio)
-        row_keep.pack(fill="x", padx=10, pady=(2, 10))
-        ttk.Checkbutton(
-            row_keep,
-            text="Conserver le fichier intermédiaire (utile pour debug)",
-            variable=self.keep_intermediate_var
-        ).pack(side="left")
-
-        ttk.Frame(parent).pack(fill="both", expand=True)
-
     # -------------- Theme system --------------
 
     def _on_theme_change(self, _event=None):
@@ -1090,6 +1080,11 @@ class App(tk.Tk):
             return False, downloaded_path  # message d'erreur
 
         self.log(f"📦 Intermédiaire : {downloaded_path}")
+        # (PATCH C) Si le fichier intermédiaire est déjà dans le format final, on évite ffmpeg (pas d'édition in-place)
+        if downloaded_path.lower().endswith(f".{fmt}"):
+            final_path = downloaded_path
+            self.log(f"🎧 Sortie : {final_path}")
+            return True, "OK"
 
         ok2, msg_or_final = self._convert_audio(downloaded_path, fmt)
         if not ok2:
@@ -1219,14 +1214,9 @@ class App(tk.Tk):
 
             self.log("▶️ yt-dlp (binaire) : " + " ".join(cmd))
 
-            dest_re = re.compile(r"Destination:\s(.+)$")
-
             def on_line(line: str):
-                nonlocal downloaded_path
+                # On log tout, mais on NE parse PAS "Destination:" (risque encodage Windows)
                 self.log(line)
-                m = dest_re.search(line)
-                if m:
-                    downloaded_path = m.group(1).strip()
 
             rc = run_subprocess(cmd, on_line, self.stop_flag)
             if rc == 130:
@@ -1234,16 +1224,37 @@ class App(tk.Tk):
             if rc != 0:
                 return False, f"yt-dlp a échoué (code {rc})."
 
-        # fallback : si destination non détectée, on cherche le fichier le plus récent dans outdir
-        if not downloaded_path or not os.path.isfile(downloaded_path):
+            # Force l'utilisation du fallback "scan du dossier" (chemins fiables depuis l'OS)
+            downloaded_path = None
+
+            # fallback : on cherche le fichier le plus récent dans le dossier de sortie
             folder = os.path.dirname(outtmpl)
             if not os.path.isdir(folder):
                 folder = os.path.dirname(folder)
 
+            # (PATCH B) Si possible, filtre par l'ID de la vidéo pour éviter de ramasser un vieux fichier
+            video_id = None
+            m = re.search(r"[?&]v=([A-Za-z0-9_-]{6,})", url)
+            if m:
+                video_id = m.group(1)
+            else:
+                # Support youtu.be/<id>
+                m2 = re.search(r"youtu\.be/([A-Za-z0-9_-]{6,})", url)
+                if m2:
+                    video_id = m2.group(1)
+
+
+
             candidates = []
             try:
                 for name in os.listdir(folder):
-                    if any(name.lower().endswith(ext) for ext in (".m4a", ".mp4", ".webm", ".mkv", ".mp3", ".aac", ".ogg", ".opus")):
+                    # (PATCH B) Ne garder que les fichiers correspondant à la vidéo courante si on a l'ID
+                    if video_id and (f"[{video_id}]" not in name):
+                        continue
+
+                    if any(name.lower().endswith(ext) for ext in (".m4a", ".mp4", ".webm", ".mkv", ".aac", ".ogg", ".opus")):
+                        ...
+
                         p = os.path.join(folder, name)
                         candidates.append((os.path.getmtime(p), p))
             except Exception:
