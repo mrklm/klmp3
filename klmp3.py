@@ -631,12 +631,12 @@ class App(tk.Tk):
     def _build_options_tab(self, parent):
         pad = {"padx": 10, "pady": 8}
 
-        frm_opts = ttk.LabelFrame(parent, text="Options")
-        frm_opts.pack(fill="x", **pad)
+                # ===== Bloc 1 : Navigateur YouTube =====
+        frm_browser = ttk.LabelFrame(parent, text="YouTube : navigateur")
+        frm_browser.pack(fill="x", **pad)
 
-        # --- Ligne navigateur YouTube (demandée) ---
-        row_browser = ttk.Frame(frm_opts)
-        row_browser.pack(fill="x", padx=10, pady=(10, 6))
+        row_browser = ttk.Frame(frm_browser)
+        row_browser.pack(fill="x", padx=10, pady=(10, 10))
 
         ttk.Label(
             row_browser,
@@ -660,9 +660,12 @@ class App(tk.Tk):
 
         self.cb_yt_browser.bind("<<ComboboxSelected>>", self._on_yt_browser_change)
 
-        # --- Ligne Format audio (combobox) ---
-        row_fmt = ttk.Frame(frm_opts)
-        row_fmt.pack(fill="x", padx=10, pady=(6, 4))
+        # ===== Bloc 2 : Format audio =====
+        frm_audio = ttk.LabelFrame(parent, text="Audio : format de sortie")
+        frm_audio.pack(fill="x", padx=10, pady=(0, 8))
+
+        row_fmt = ttk.Frame(frm_audio)
+        row_fmt.pack(fill="x", padx=10, pady=(10, 6))
 
         ttk.Label(row_fmt, text="Format audio :").pack(side="left")
 
@@ -680,6 +683,16 @@ class App(tk.Tk):
         self.cb_format.set(self._format_key_to_label[self.audio_format_var.get()])
 
         self.cb_format.bind("<<ComboboxSelected>>", self._on_format_change)
+
+        # Keep intermediate (reste dans le bloc Audio)
+        row_keep = ttk.Frame(frm_audio)
+        row_keep.pack(fill="x", padx=10, pady=(0, 10))
+        ttk.Checkbutton(
+            row_keep,
+            text="Conserver le fichier intermédiaire (utile pour debug)",
+            variable=self.keep_intermediate_var
+        ).pack(side="left")
+
 
         # --- Bloc Réglage avancé (adaptatif) ---
         frm_adv = ttk.LabelFrame(parent, text="Réglage avancé")
@@ -765,7 +778,7 @@ class App(tk.Tk):
         ttk.Label(self.w_wav, text="WAV = non compressé (16-bit), pas de réglage.").grid(row=0, column=0, sticky="w")
 
         # Keep intermediate
-        row_keep = ttk.Frame(frm_opts)
+        row_keep = ttk.Frame(frm_audio)
         row_keep.pack(fill="x", padx=10, pady=(2, 10))
         ttk.Checkbutton(
             row_keep,
