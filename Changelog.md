@@ -4,11 +4,38 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 Le format est inspiré de Keep a Changelog et le versionnement suit une logique sémantique pragmatique.
 
 
+
+
+[2.3] – 2026-01-17
+
+Ajouté
+
+- Bouton "Coller" à gauche le champ URL qui récupere le contenu du presse papier
+
+Modifié
+
+- Déplacement des boutons + /- à droite du champ URL 
+
+
+[2.2] – 2026-01-17
+
+Ajouté
+
+- Préfèrer un fichier “source” (.webm/.m4a/...) plutôt que de ramasser directement un .mp3 déjà présent
+  (ce qui provoquait un ffmpeg in-place).
+
+- Détection “déjà au bon format” via os.path.splitext (plus fiable que endswith quand il y a des caractères bizarres).
+
+- Noms de fichiers Windows : ajout de --windows-filenames pour yt-dlp sur Windows, + renommage de sécurité via ensure_safe_path() 
+  pour éviter les titres “toxiques” (variation selectors invisibles, etc.) qui font exploser ffmpeg.
+
+---
+
 [2.1] – 2026-01-17
 
 Modifié
 
-Ajustement pour que les caractères speciaux et les emojis ne fassent plus crasher l'encodage
+- Ajustement pour que les caractères speciaux et les emojis ne fassent plus crasher l'encodage
 
 ---
 
@@ -16,7 +43,7 @@ Ajustement pour que les caractères speciaux et les emojis ne fassent plus crash
 
 Ajouté
 
-Fonction choix du navigateur (dans lequel l'utilisateur à un compte Youtube)
+- Fonction choix du navigateur (dans lequel l'utilisateur à un compte Youtube)
 
 ---
 
@@ -24,7 +51,7 @@ Fonction choix du navigateur (dans lequel l'utilisateur à un compte Youtube)
 
 Modifié
 
-Modifications pour empecher les popups de fenetres firefox sous windows
+- Modifications pour empecher les popups de fenetres firefox sous windows
 
 ---
 
@@ -32,7 +59,7 @@ Modifications pour empecher les popups de fenetres firefox sous windows
 
 Ajouté
 
-Mise en place de l'autonomie du programme : on embarque "Deno" 
+- Mise en place de l'autonomie du programme : on embarque "Deno" 
 (Deno est le petit moteur JavaScript que yt-dlp utilise pour exécuter les scripts de YouTube (décryptage, challenges anti-bot), quand YouTube l’exige.)
 
 ---
@@ -41,7 +68,7 @@ Mise en place de l'autonomie du programme : on embarque "Deno"
 
 Ajouté
 
-Mise en place de l'autonomie du programme : codec FFMPEG integré
+- Mise en place de l'autonomie du programme : codec FFMPEG integré
 
 --- 
 
@@ -49,7 +76,7 @@ Mise en place de l'autonomie du programme : codec FFMPEG integré
 
 Ajouté
 
-Ajout de type d'exports : MP3 - FLAC - OGG - M4A - OPUS - WAV
+- Ajout de type d'exports : MP3 - FLAC - OGG - M4A - OPUS - WAV
 
 ---
 
@@ -57,7 +84,7 @@ Ajout de type d'exports : MP3 - FLAC - OGG - M4A - OPUS - WAV
 
 Ajouté
 
-File d’attente jusqu’à 10 URLs
+- File d’attente jusqu’à 10 URLs
 Boutons d’ajout (+) et suppression (−) d’URL
 
 [0.1.0] – 2026-01-14
