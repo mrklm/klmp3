@@ -4,9 +4,27 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 Le format est inspiré de Keep a Changelog et le versionnement suit une logique sémantique pragmatique.
 
 
+[2.1] – 2026-01-17
+
+Modifié
+
+Ajustement pour que les caractères speciaux et les emojis ne fassent plus crasher l'encodage
+
+---
+
+[2.0] – 2026-01-17
+
+Ajouté
+
+Fonction choix du navigateur (dans lequel l'utilisateur à un compte Youtube)
+
+---
+
 [1.5] – 2026-01-16
 
-rechherche de trucs pour eviter les popups de fenetres firefox sous windows
+Modifié
+
+Modifications pour empecher les popups de fenetres firefox sous windows
 
 ---
 
