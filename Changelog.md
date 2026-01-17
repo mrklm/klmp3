@@ -4,7 +4,11 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 Le format est inspiré de Keep a Changelog et le versionnement suit une logique sémantique pragmatique.
 
 
+[2.4] – 2026-01-17
 
+Ajouté
+
+- Possibilité d'importer les sons d'une playlist entière (Youtube)
 
 [2.3] – 2026-01-17
 

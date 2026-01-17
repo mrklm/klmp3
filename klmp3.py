@@ -24,6 +24,7 @@ import platform
 import json
 from dataclasses import dataclass
 from datetime import datetime
+import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from ffmpeg_locator import find_ffmpeg_tools_first
@@ -331,7 +332,7 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLmp3 - v2.2")
+        self.title("KLmp3 - v2.4")
         self.geometry("820x620")
         self.minsize(780, 560)
 
@@ -1032,23 +1033,29 @@ class App(tk.Tk):
         # Template intermédiaire : on garde l'extension d'origine
         outtmpl = os.path.join(outdir, "%(title).200s [%(id)s].%(ext)s")
 
-        ok, downloaded_path = self._download_audio(url, outtmpl, platform=platform)
+        ok, downloaded = self._download_audio(url, outtmpl, platform=platform)
         if not ok:
-            return False, downloaded_path  # message d'erreur
+            return False, downloaded
 
-        self.log(f"📦 Intermédiaire : {downloaded_path}")
+        # downloaded peut être une str (1 vidéo) ou une liste (playlist)
+        downloaded_paths = [downloaded] if isinstance(downloaded, str) else list(downloaded)
 
-        ok2, msg_or_final = self._convert_audio(downloaded_path, fmt)
-        if not ok2:
-            return False, msg_or_final
+        converted = 0
+        for downloaded_path in downloaded_paths:
+            self.log(f"📦 Intermédiaire : {downloaded_path}")
 
-        final_path = msg_or_final
-        self.log(f"🎧 Sortie : {final_path}")
+            ok2, msg_or_final = self._convert_audio(downloaded_path, fmt)
+            if not ok2:
+                return False, msg_or_final
 
-        if not keep_inter:
-            self._safe_remove(downloaded_path)
+            final_path = msg_or_final
+            self.log(f"🎧 Sortie : {final_path}")
+            converted += 1
 
-        return True, "OK"
+            if not keep_inter:
+                self._safe_remove(downloaded_path)
+
+        return True, f"OK ({converted} fichier(s) converti(s))"
 
     def _download_audio(self, url: str, outtmpl: str, platform: str):
         """
@@ -1062,6 +1069,7 @@ class App(tk.Tk):
         else:
             fmt_sel = "bestaudio/best"
 
+        t0 = time.time()  # repère temporel pour retrouver tous les fichiers (playlist)
 
         # For YouTube, on force le mode binaire (plus fiable pour cookies + JS challenges)
         if platform == "youtube":
@@ -1204,27 +1212,48 @@ class App(tk.Tk):
             if rc != 0:
                 return False, f"yt-dlp a échoué (code {rc})."
 
-        # fallback : si destination non détectée, on cherche le fichier le plus récent dans outdir
-        if not downloaded_path or not os.path.isfile(downloaded_path):
-            folder = os.path.dirname(outtmpl)
-            if not os.path.isdir(folder):
-                folder = os.path.dirname(folder)
-            candidates = []
-            try:
-                for name in os.listdir(folder):
-                    if any(name.lower().endswith(ext) for ext in (".m4a", ".mp4", ".webm", ".mkv", ".mp3", ".aac", ".ogg", ".opus")):
-                        p = os.path.join(folder, name)
-                        candidates.append((os.path.getmtime(p), p))
-            except Exception:
-                candidates = []
+        # --- Récupération du/des fichier(s) téléchargé(s) ---
+        downloaded_paths = []
+        if downloaded_path:
+            cand = downloaded_path.strip().strip('"')
+            cand = os.path.normpath(cand)
+            if os.path.isfile(cand):
+                downloaded_paths.append(cand)
 
-            if candidates:
-                downloaded_path = sorted(candidates, reverse=True)[0][1]
+        folder = os.path.dirname(outtmpl)
+        if not os.path.isdir(folder):
+            folder = os.path.dirname(folder)
 
-        if not downloaded_path or not os.path.isfile(downloaded_path):
+        exts = ('.m4a', '.mp4', '.webm', '.mkv', '.mp3', '.aac', '.ogg', '.opus')
+        recent = []
+        try:
+            for name in os.listdir(folder):
+                low = name.lower()
+                if low.endswith('.part'):
+                    continue
+                if not any(low.endswith(ext) for ext in exts):
+                    continue
+                p = os.path.join(folder, name)
+                try:
+                    mt = os.path.getmtime(p)
+                except Exception:
+                    continue
+                # marge de 3 secondes pour les FS/horloges
+                if mt >= (t0 - 3):
+                    recent.append((mt, p))
+        except Exception:
+            recent = []
+
+        for _mt, p in sorted(recent, key=lambda x: x[0]):
+            if os.path.isfile(p) and p not in downloaded_paths:
+                downloaded_paths.append(p)
+
+        if not downloaded_paths:
             return False, "Impossible de trouver le fichier téléchargé."
 
-        return True, downloaded_path
+        if len(downloaded_paths) == 1:
+            return True, downloaded_paths[0]
+        return True, downloaded_paths
 
     def _convert_audio(self, in_path: str, fmt: str):
         """
