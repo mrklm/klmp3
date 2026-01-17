@@ -4,7 +4,7 @@
 """
 KLmp3 - Extracteur audio YouTube/Twitch (Tkinter)
 - Télécharge l'audio avec yt-dlp, puis convertit avec ffmpeg selon le format choisi.
-- YouTube : bestaudio/best
+- YouTube : bestaudio/best (évite m3u8 quand possible)
 - Twitch VOD : Audio_Only
 Notes:
 - Nécessite: ffmpeg + ffprobe (dans le PATH ou dans tools/<platform>/).
@@ -26,27 +26,19 @@ from dataclasses import dataclass
 from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+
 from ffmpeg_locator import find_ffmpeg_tools_first
-
-
 from PIL import Image, ImageTk
 
 
 def _setup_ssl_certificates() -> None:
-    """Configure un bundle de certificats CA pour éviter les erreurs SSL en app packagée.
-
-    Sur macOS (et parfois Windows), une app PyInstaller peut se retrouver sans accès
-    aux certificats racines du système. Le module `certifi` fournit un bundle CA fiable.
-    """
+    """Configure un bundle de certificats CA pour éviter les erreurs SSL en app packagée."""
     try:
         import certifi  # type: ignore
-
         ca_path = certifi.where()
-        # Utilisés par ssl/urllib et certains clients HTTP.
         os.environ.setdefault("SSL_CERT_FILE", ca_path)
         os.environ.setdefault("REQUESTS_CA_BUNDLE", ca_path)
     except Exception:
-        # Si certifi n'est pas installé/embarqué, on ne casse pas le programme.
         pass
 
 
@@ -127,7 +119,6 @@ THEMES = {
     ),
 }
 
-
 # Formats proposés dans l'UI (clé interne -> label)
 FORMAT_LABELS = {
     "mp3": "MP3",
@@ -140,6 +131,17 @@ FORMAT_LABELS = {
 FORMAT_KEYS_IN_ORDER = ["mp3", "m4a", "opus", "flac", "ogg", "wav"]
 
 
+# Navigateur cookies-from-browser (label UI -> token yt-dlp)
+YTB_BROWSER_LABELS = ["Firefox", "Chrome", "Chromium", "Edge"]
+YTB_BROWSER_LABEL_TO_TOKEN = {
+    "Firefox": "firefox",
+    "Chrome": "chrome",
+    "Chromium": "chromium",
+    "Edge": "edge",
+}
+YTB_BROWSER_TOKEN_TO_LABEL = {v: k for k, v in YTB_BROWSER_LABEL_TO_TOKEN.items()}
+
+
 def is_twitch(url: str) -> bool:
     return "twitch.tv" in url.lower()
 
@@ -147,12 +149,6 @@ def is_twitch(url: str) -> bool:
 def is_youtube(url: str) -> bool:
     u = url.lower()
     return ("youtube.com" in u) or ("youtu.be" in u)
-
-
-def which_or_none(cmd: str) -> str | None:
-    return shutil.which(cmd)
-
-
 
 
 @dataclass(frozen=True)
@@ -164,7 +160,7 @@ class ToolPath:
 def _app_base_dir() -> str:
     """
     Dossier de base où se trouvent assets/ et tools/.
-    Compatible PyInstaller (sys._MEIPASS) si un jour tu bundles.
+    Compatible PyInstaller (sys._MEIPASS).
     """
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         return os.path.abspath(sys._MEIPASS)
@@ -192,14 +188,8 @@ def _is_executable(path: str) -> bool:
     return os.path.isfile(path) and os.access(path, os.X_OK)
 
 
-
-
 def ytdlp_module_available() -> bool:
-    """Retourne True si le module Python yt_dlp est importable.
-
-    Pour la distribution (Option 1), on privilégie le module plutôt que le binaire yt-dlp,
-    afin d'éviter les soucis d'embarquement PyInstaller sur macOS.
-    """
+    """Retourne True si le module Python yt_dlp est importable."""
     try:
         import yt_dlp  # noqa: F401
         return True
@@ -225,12 +215,10 @@ def find_ytdlp_tools_first() -> ToolPath:
     if _is_executable(cand):
         return ToolPath(path=cand, source="TOOLS")
 
-    # Dernier recours : présent mais pas exécutable
     if os.path.isfile(cand):
         return ToolPath(path=cand, source="MISSING")
 
     return ToolPath(path=None, source="MISSING")
-
 
 
 def find_deno_tools_first() -> ToolPath:
@@ -244,10 +232,11 @@ def find_deno_tools_first() -> ToolPath:
         return ToolPath(path=cand, source="TOOLS")
 
     if os.path.isfile(cand):
-        # Fichier présent mais pas exécutable / pas trouvé
         return ToolPath(path=cand, source="MISSING")
 
     return ToolPath(path=None, source="MISSING")
+
+
 def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event) -> int:
     """Run a subprocess, stream stdout+stderr line by line to on_line()."""
     proc = subprocess.Popen(
@@ -277,13 +266,8 @@ def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event) -> int:
 
 
 def default_outdir() -> str:
-    """Dossier de sortie par défaut.
-
-    Souhait : **un seul dossier daté sur le Bureau** (pas de AA/MM/JJ imbriqués).
-    Exemple : ~/Desktop/klmp3-25-01-16
-    """
+    """Dossier de sortie par défaut (un seul dossier daté sur le Bureau)."""
     desktop = os.path.join(os.path.expanduser("~"), "Desktop")
-    # macOS FR garde "Desktop" (Bureau = libellé Finder), mais on garde un fallback.
     if not os.path.isdir(desktop):
         desktop = os.path.expanduser("~")
     stamp = datetime.now().strftime("%y-%m-%d")
@@ -327,19 +311,19 @@ def _save_config(data: dict) -> None:
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
+
         # Localise ffmpeg/ffprobe (PATH sinon tools/)
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLmp3 - v1.5")
+
+        self.title("KLmp3 - v2.0")
         self.geometry("820x620")
         self.minsize(780, 560)
 
         # Theme
         self.style = ttk.Style()
         self.theme_var = tk.StringVar()
-        self.current_theme_name = random.choice(list(THEMES.keys()))
-        self.theme_var.set(self.current_theme_name)
 
         # State
         self.worker_thread: threading.Thread | None = None
@@ -352,8 +336,9 @@ class App(tk.Tk):
         # UI vars
         self.outdir_var = tk.StringVar(value=default_outdir())
 
-        # Config persistée (config.json dans dossier utilisateur)
+        # Config persistée
         self._config = _load_config()
+
         # Format (6 formats) — MP3 par défaut
         self.audio_format_var = tk.StringVar(value="mp3")
 
@@ -366,12 +351,19 @@ class App(tk.Tk):
 
         self.keep_intermediate_var = tk.BooleanVar(value=False)
 
+        # YouTube browser selection (cookies-from-browser)
+        self.yt_browser_token_var = tk.StringVar(value="firefox")   # token yt-dlp
+        self.yt_browser_label_var = tk.StringVar(value="Firefox")   # label UI
+
         # UI refs
         self._logo_img = None  # keep ref
         self.has_aac_at = False
 
         # Messages à afficher dans le journal après construction de l'UI
         self._startup_msgs: list[str] = []
+
+        # Ligne demandée (première ligne du journal)
+        self._startup_msgs.append("Sélectionner votre navigateur dans l'onglet option")
 
         # yt-dlp : détection binaire
         self.ytdlp = find_ytdlp_tools_first()
@@ -385,11 +377,14 @@ class App(tk.Tk):
             if not self.ytdlp_path:
                 self._startup_msgs.append("❌ Mode packagé : yt-dlp.exe manquant dans tools/<platform>/")
 
-
         # --- Deno ---
         self.deno = find_deno_tools_first()
         self.deno_path = self.deno.path
 
+        # Charge config -> vars
+        self._apply_config_to_vars()
+
+        # UI
         self._build_ui()
 
         # Affiche les messages de démarrage une fois que le widget de log (self.txt) existe
@@ -397,12 +392,11 @@ class App(tk.Tk):
             self.log(m)
         self._startup_msgs.clear()
 
-
         # Détection encoder aac_at (macOS)
         self.has_aac_at = self._ffmpeg_has_encoder("aac_at")
 
-        # Applique le thème aléatoire au démarrage
-        self.apply_theme(self.current_theme_name)
+        # Applique le thème (config ou aléatoire)
+        self.apply_theme(self.theme_var.get().strip() or self.current_theme_name)
 
         # UI dépendant format
         self._update_advanced_controls()
@@ -412,6 +406,88 @@ class App(tk.Tk):
 
         # Onglet par défaut : Général
         self.nb.select(self.tab_general)
+
+        # Save config on close
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    # ---------------- Config ----------------
+
+    def _apply_config_to_vars(self) -> None:
+        # Theme
+        theme_name = self._config.get("theme_name")
+        if isinstance(theme_name, str) and theme_name in THEMES:
+            self.current_theme_name = theme_name
+        else:
+            self.current_theme_name = random.choice(list(THEMES.keys()))
+        self.theme_var.set(self.current_theme_name)
+
+        # Outdir
+        outdir = self._config.get("outdir")
+        if isinstance(outdir, str) and outdir.strip():
+            self.outdir_var.set(outdir)
+
+        # Format
+        fmt = self._config.get("audio_format")
+        if isinstance(fmt, str) and fmt in FORMAT_LABELS:
+            self.audio_format_var.set(fmt)
+
+        # Advanced settings
+        mp3q = self._config.get("mp3_quality")
+        if isinstance(mp3q, str) and mp3q in [str(i) for i in range(10)]:
+            self.mp3_quality_var.set(mp3q)
+
+        aacb = self._config.get("aac_bitrate")
+        if isinstance(aacb, str) and aacb.endswith("k"):
+            self.aac_bitrate_var.set(aacb)
+
+        opusb = self._config.get("opus_bitrate")
+        if isinstance(opusb, str) and opusb.endswith("k"):
+            self.opus_bitrate_var.set(opusb)
+
+        vorq = self._config.get("vorbis_quality")
+        if isinstance(vorq, str) and vorq.isdigit():
+            self.vorbis_quality_var.set(vorq)
+
+        flac = self._config.get("flac_level")
+        if isinstance(flac, str) and flac.isdigit():
+            self.flac_level_var.set(flac)
+
+        keep = self._config.get("keep_intermediate")
+        if isinstance(keep, bool):
+            self.keep_intermediate_var.set(keep)
+
+        # YouTube browser
+        token = self._config.get("yt_browser")
+        if isinstance(token, str) and token in YTB_BROWSER_TOKEN_TO_LABEL:
+            self.yt_browser_token_var.set(token)
+            self.yt_browser_label_var.set(YTB_BROWSER_TOKEN_TO_LABEL[token])
+        else:
+            self.yt_browser_token_var.set("firefox")
+            self.yt_browser_label_var.set("Firefox")
+
+    def _snapshot_vars_to_config(self) -> dict:
+        return {
+            "theme_name": self.theme_var.get().strip(),
+            "outdir": self.outdir_var.get().strip(),
+            "audio_format": self.audio_format_var.get().strip(),
+            "mp3_quality": self.mp3_quality_var.get().strip(),
+            "aac_bitrate": self.aac_bitrate_var.get().strip(),
+            "opus_bitrate": self.opus_bitrate_var.get().strip(),
+            "vorbis_quality": self.vorbis_quality_var.get().strip(),
+            "flac_level": self.flac_level_var.get().strip(),
+            "keep_intermediate": bool(self.keep_intermediate_var.get()),
+            "yt_browser": self.yt_browser_token_var.get().strip(),
+        }
+
+    def _save_config_now(self) -> None:
+        self._config = self._snapshot_vars_to_config()
+        _save_config(self._config)
+
+    def _on_close(self) -> None:
+        try:
+            self._save_config_now()
+        finally:
+            self.destroy()
 
     # ---------------- UI ----------------
 
@@ -495,8 +571,6 @@ class App(tk.Tk):
         self._build_options_tab(self.tab_options)
 
     def _setup_styles(self):
-        # IMPORTANT (macOS) : le thème "aqua" ignore beaucoup de backgrounds.
-        # "clam" accepte bien les couleurs -> thèmes vraiment visibles.
         try:
             self.style.theme_use("clam")
         except Exception:
@@ -560,9 +634,35 @@ class App(tk.Tk):
         frm_opts = ttk.LabelFrame(parent, text="Options")
         frm_opts.pack(fill="x", **pad)
 
+        # --- Ligne navigateur YouTube (demandée) ---
+        row_browser = ttk.Frame(frm_opts)
+        row_browser.pack(fill="x", padx=10, pady=(10, 6))
+
+        ttk.Label(
+            row_browser,
+            text="Sélectionnez le navigateur avec lequel vous vous connectez à YouTube"
+        ).pack(side="left")
+
+        self.cb_yt_browser = ttk.Combobox(
+            row_browser,
+            state="readonly",
+            width=14,
+            values=YTB_BROWSER_LABELS,
+            textvariable=self.yt_browser_label_var,
+        )
+        self.cb_yt_browser.pack(side="left", padx=(10, 0))
+
+        # Assure cohérence label/token au démarrage
+        cur_label = self.yt_browser_label_var.get().strip()
+        if cur_label not in YTB_BROWSER_LABELS:
+            cur_token = self.yt_browser_token_var.get().strip()
+            self.yt_browser_label_var.set(YTB_BROWSER_TOKEN_TO_LABEL.get(cur_token, "Firefox"))
+
+        self.cb_yt_browser.bind("<<ComboboxSelected>>", self._on_yt_browser_change)
+
         # --- Ligne Format audio (combobox) ---
         row_fmt = ttk.Frame(frm_opts)
-        row_fmt.pack(fill="x", padx=10, pady=(8, 4))
+        row_fmt.pack(fill="x", padx=10, pady=(6, 4))
 
         ttk.Label(row_fmt, text="Format audio :").pack(side="left")
 
@@ -575,7 +675,6 @@ class App(tk.Tk):
         self.cb_format.pack(side="left", padx=(10, 0))
 
         # Synchronise combobox UI <-> var interne
-        # On stocke la clé interne dans audio_format_var, mais on affiche un label.
         self._format_label_to_key = {FORMAT_LABELS[k]: k for k in FORMAT_KEYS_IN_ORDER}
         self._format_key_to_label = {k: FORMAT_LABELS[k] for k in FORMAT_KEYS_IN_ORDER}
         self.cb_format.set(self._format_key_to_label[self.audio_format_var.get()])
@@ -667,12 +766,13 @@ class App(tk.Tk):
 
         # Keep intermediate
         row_keep = ttk.Frame(frm_opts)
-        row_keep.pack(fill="x", padx=10, pady=(2, 8))
+        row_keep.pack(fill="x", padx=10, pady=(2, 10))
         ttk.Checkbutton(
             row_keep,
             text="Conserver le fichier intermédiaire (utile pour debug)",
             variable=self.keep_intermediate_var
         ).pack(side="left")
+
         ttk.Frame(parent).pack(fill="both", expand=True)
 
     # -------------- Theme system --------------
@@ -681,6 +781,7 @@ class App(tk.Tk):
         name = self.theme_var.get().strip()
         if name in THEMES:
             self.apply_theme(name)
+            self._save_config_now()
 
     def apply_theme(self, theme_name: str):
         theme = THEMES.get(theme_name)
@@ -719,6 +820,14 @@ class App(tk.Tk):
         except Exception:
             pass
 
+    # -------------- YouTube browser UI ----------------
+
+    def _on_yt_browser_change(self, _event=None):
+        label = self.yt_browser_label_var.get().strip()
+        token = YTB_BROWSER_LABEL_TO_TOKEN.get(label, "firefox")
+        self.yt_browser_token_var.set(token)
+        self._save_config_now()
+
     # -------------- Format UI ----------------
 
     def _on_format_change(self, _event=None):
@@ -726,6 +835,7 @@ class App(tk.Tk):
         key = self._format_label_to_key.get(label, "mp3")
         self.audio_format_var.set(key)
         self._update_advanced_controls()
+        self._save_config_now()
 
     def _update_advanced_controls(self):
         fmt = self.audio_format_var.get().strip().lower()
@@ -791,7 +901,6 @@ class App(tk.Tk):
 
     # -------------- Helpers --------------
 
-
     def choose_outdir(self):
         """Choisit le dossier de sortie (sans rajouter de sous-dossier automatique)."""
         d = filedialog.askdirectory(
@@ -799,6 +908,8 @@ class App(tk.Tk):
         )
         if d:
             self.outdir_var.set(d)
+            self._save_config_now()
+
     def log(self, msg: str):
         self.txt.configure(state="normal")
         self.txt.insert("end", msg + "\n")
@@ -813,7 +924,6 @@ class App(tk.Tk):
             self.log("ℹ️ Deno absent : certaines vidéos YouTube peuvent demander un challenge JS (mode dégradé)")
         else:
             self.log("📦 Deno embarqué : support YouTube (JS challenge)")
-
 
         # ffmpeg/ffprobe via PATH ou tools/
         if not self.ffmpeg_path:
@@ -866,7 +976,7 @@ class App(tk.Tk):
     # ----------------- Run logic -----------------
 
     def start(self):
-        # (Option UX) Toujours revenir sur Général quand on démarre (pour voir le journal)
+        # Toujours revenir sur Général quand on démarre (pour voir le journal)
         self.nb.select(self.tab_general)
 
         base_out = self.outdir_var.get().strip()
@@ -875,7 +985,6 @@ class App(tk.Tk):
             return
 
         outdir = base_out
-
 
         urls = [v.get().strip() for v in self.url_vars]
         urls = [u for u in urls if u]
@@ -904,6 +1013,8 @@ class App(tk.Tk):
         self.btn_stop.configure(state="normal")
         self.stop_flag.clear()
         self.progress.start(10)
+
+        self._save_config_now()
 
         self.worker_thread = threading.Thread(target=self._worker_queue, args=(urls, outdir), daemon=True)
         self.worker_thread.start()
@@ -959,7 +1070,6 @@ class App(tk.Tk):
         """
         Télécharge un fichier audio (intermédiaire) avec yt-dlp, puis convertit avec ffmpeg.
         """
-        # Template intermédiaire : on garde l'extension d'origine
         outtmpl = os.path.join(outdir, "%(title).200s [%(id)s].%(ext)s")
 
         ok, downloaded_path = self._download_audio(url, outtmpl, platform=platform)
@@ -984,36 +1094,25 @@ class App(tk.Tk):
         """
         Retourne (ok, path_ou_message).
         """
-        # yt-dlp : on ne convertit pas ici, on télécharge la meilleure piste audio.
-        # Twitch : Audio_Only
-        # YouTube : bestaudio/best
         if platform == "twitch":
             fmt_sel = "Audio_Only"
         else:
             fmt_sel = "bestaudio[protocol!*=m3u8]/bestaudio/best"
 
-
-        # For YouTube, on force le mode binaire (plus fiable pour cookies + JS challenges)
+        # For YouTube, on force le mode binaire (plus fiable pour cookies-from-browser + JS challenges)
         if platform == "youtube":
             self.ytdlp_mode = "binary"
-
 
         # lazy resolve yt-dlp path when switching to binary at runtime
         if self.ytdlp_mode == "binary" and not getattr(self, "ytdlp_path", None):
             self.ytdlp = find_ytdlp_tools_first()
             self.ytdlp_path = self.ytdlp.path
 
-        # yt-dlp : Option 1 (distribution) => utiliser l'API Python du module yt_dlp.
-        # IMPORTANT : dans une app PyInstaller "windowed", appeler `sys.executable -m yt_dlp`
-        # relance l'exécutable (et donc une 2e fenêtre) au lieu de lancer un interpréteur Python.
-        # Donc : si le module est dispo -> API. Sinon -> binaire dans le PATH.
-
         if getattr(self, "ytdlp_mode", "binary") == "module":
             try:
                 import yt_dlp
                 from yt_dlp.utils import DownloadCancelled
             except Exception:
-                # On retombe sur le mode binaire ci-dessous
                 self.ytdlp_mode = "binary"
 
         downloaded_path = None
@@ -1023,13 +1122,11 @@ class App(tk.Tk):
 
             def hook(d):
                 nonlocal downloaded_path
-                # Annulation utilisateur
                 if getattr(self, 'stop_flag', None) is not None and self.stop_flag.is_set():
                     raise DownloadCancelled()
 
                 status = d.get("status")
                 if status == "downloading":
-                    # Log léger (évite de spammer trop)
                     pct = d.get("_percent_str")
                     spd = d.get("_speed_str")
                     eta = d.get("_eta_str")
@@ -1051,7 +1148,6 @@ class App(tk.Tk):
                 def __init__(self, log_fn):
                     self._log = log_fn
                 def debug(self, msg):
-                    # yt_dlp envoie beaucoup de debug; on filtre
                     if msg and ("[download]" in msg or "Destination" in msg or "Merging" in msg):
                         self._log(msg)
                 def warning(self, msg):
@@ -1070,8 +1166,8 @@ class App(tk.Tk):
                 "progress_hooks": [hook],
                 "logger": _YDLLogger(self.log),
             }
-            # Cookies YouTube : en pratique on passe par le mode binaire pour YouTube (cookies navigateur + JS challenges).
 
+            # NB: Pour YouTube, on passe en binaire (cookies-from-browser + deno).
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     rc = ydl.download([url])
@@ -1083,9 +1179,6 @@ class App(tk.Tk):
                 return False, f"yt-dlp (module) a échoué : {e}"
 
         else:
-            # Secours : binaire yt-dlp (PATH ou tools/<platform>/)
-            # IMPORTANT : en mode packagé (PyInstaller), sys.executable == l'app (.exe).
-            # Donc on INTERDIT le fallback `sys.executable -m yt_dlp` (sinon double instance).
             frozen = getattr(sys, "frozen", False)
             if frozen and not getattr(self, "ytdlp_path", None):
                 return False, "Mode packagé : yt-dlp.exe introuvable. Placez-le dans tools/<platform>/ (ex: tools/windows-x86_64/yt-dlp.exe)."
@@ -1094,15 +1187,18 @@ class App(tk.Tk):
 
             cmd += [
                 url,
-                '-f', fmt_sel,
-                '-o', outtmpl,
-                '--newline',
-                '--no-warnings',
+                "-f", fmt_sel,
+                "-o", outtmpl,
+                "--newline",
+                "--no-warnings",
             ]
+
             if platform == "youtube":
-                # Cookies YouTube : lecture depuis le navigateur (Firefox)
-                cmd += ["--cookies-from-browser", "firefox"]
-                self.log("🍪 Cookies YouTube : lecture depuis le navigateur (Firefox)")
+                # Cookies YouTube : lecture depuis le navigateur (selon choix utilisateur)
+                token = self.yt_browser_token_var.get().strip() or "firefox"
+                label = YTB_BROWSER_TOKEN_TO_LABEL.get(token, "Firefox")
+                cmd += ["--cookies-from-browser", token]
+                self.log(f"🍪 Cookies YouTube : lecture depuis le navigateur ({label})")
 
                 # JS challenges YouTube : nécessite un runtime JS (deno)
                 if getattr(self, "deno_path", None):
@@ -1130,6 +1226,7 @@ class App(tk.Tk):
             folder = os.path.dirname(outtmpl)
             if not os.path.isdir(folder):
                 folder = os.path.dirname(folder)
+
             candidates = []
             try:
                 for name in os.listdir(folder):
@@ -1154,7 +1251,6 @@ class App(tk.Tk):
         """
         base_name, _ext = os.path.splitext(in_path)
 
-        # Paramètres par format
         if fmt == "mp3":
             out_path = base_name + ".mp3"
             codec = "libmp3lame"
@@ -1192,9 +1288,6 @@ class App(tk.Tk):
         else:
             return False, f"Format inconnu : {fmt}"
 
-        # Si l'extension est déjà la bonne, on peut juste renvoyer le fichier tel quel,
-        # MAIS attention : ce n'est pas forcément le même codec. On garde la conversion
-        # pour être certain du format final (cohérence).
         cmd_ff = [
             self.ffmpeg_path, "-y",
             "-i", in_path,
