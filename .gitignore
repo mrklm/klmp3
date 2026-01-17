@@ -11,3 +11,4 @@ releases/
 Thumbs.db
 *.pdf
 *.odt
+.~lock.*
