@@ -33,6 +33,16 @@ from ffmpeg_locator import find_ffmpeg_tools_first
 from PIL import Image, ImageTk
 
 
+# --- YouTube cookies-from-browser: labels for UI/log ---
+YTB_BROWSER_TOKEN_TO_LABEL = {
+    "firefox": "Firefox",
+    "chrome": "Chrome",
+    "chromium": "Chromium",
+    "edge": "Edge",
+    "safari": "Safari",
+}
+
+
 def _setup_ssl_certificates() -> None:
     """Configure un bundle de certificats CA pour éviter les erreurs SSL en app packagée.
 
@@ -332,7 +342,7 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLmp3 - v2.4")
+        self.title("KLMP3 - v2.4.1")
         self.geometry("820x620")
         self.minsize(780, 560)
 
@@ -385,9 +395,14 @@ class App(tk.Tk):
         self.ytdlp_mode = "module" if ytdlp_module_available() else "binary"
 
         if getattr(sys, "frozen", False):
-            self.ytdlp_mode = "binary"
-            if not self.ytdlp_path:
-                self._startup_msgs.append("❌ Mode packagé : yt-dlp.exe manquant dans tools/<platform>/")
+            # En bundle PyInstaller :
+            # - Windows : éviter sys.executable -m yt_dlp (double instance) => binaire recommandé
+            # - macOS/Linux : module OK (avec certifi collecté) => pas besoin de binaire
+            if sys.platform.startswith("win"):
+                self.ytdlp_mode = "binary"
+                if not self.ytdlp_path:
+                    self._startup_msgs.append("❌ Mode packagé : yt-dlp introuvable dans tools/<platform>/")
+
 
 
         # --- Deno ---
@@ -1067,13 +1082,15 @@ class App(tk.Tk):
         if platform == "twitch":
             fmt_sel = "Audio_Only"
         else:
-            fmt_sel = "bestaudio/best"
+            fmt_sel = "bestaudio[protocol!*=m3u8]/bestaudio/best"
 
         t0 = time.time()  # repère temporel pour retrouver tous les fichiers (playlist)
 
-        # For YouTube, on force le mode binaire (plus fiable pour cookies + JS challenges)
-        if platform == "youtube":
+        # YouTube : sur Windows on peut préférer le mode binaire (cookies/JS).
+        # Sur macOS/Linux, le module yt_dlp + certifi fonctionne très bien (Option 1).
+        if platform == "youtube" and sys.platform.startswith("win"):
             self.ytdlp_mode = "binary"
+
 
 
         # lazy resolve yt-dlp path when switching to binary at runtime
@@ -1150,16 +1167,28 @@ class App(tk.Tk):
             ydl_opts = {
                 "format": fmt_sel,
                 "outtmpl": outtmpl,
-                "noplaylist": True,
+                "noplaylist": False,
                 "quiet": True,
                 "no_warnings": True,
                 "progress_hooks": [hook],
                 "logger": _YDLLogger(self.log),
             }
-            # Cookies YouTube : lecture depuis le navigateur (Firefox)
+            # YouTube : cookies depuis le navigateur (selon choix utilisateur)
             if platform == "youtube":
-                ydl_opts["cookiesfrombrowser"] = ("firefox",)
-                self.log("🍪 Cookies YouTube : lecture depuis le navigateur (Firefox)")
+                token = (self.yt_browser_token_var.get().strip() if getattr(self, "yt_browser_token_var", None) else "") or "firefox"
+                label = YTB_BROWSER_TOKEN_TO_LABEL.get(token, token)
+                ydl_opts["cookiesfrombrowser"] = (token,)
+                self.log(f"🍪 Cookies YouTube : lecture depuis le navigateur ({label})")
+
+                # YouTube JS challenges (EJS) : activer runtime + solver distant
+                # Equivalent CLI:
+                #   --js-runtimes deno:/path/to/deno --remote-components ejs:github
+                deno_path = getattr(self, "deno_path", None)
+                if deno_path and os.path.isfile(deno_path):
+                    ydl_opts["js_runtimes"] = {"deno": {"path": deno_path}}
+                    ydl_opts["remote_components"] = {"ejs:github"}
+                else:
+                    self.log("⚠️ Deno introuvable : certaines vidéos YouTube peuvent échouer (JS challenge).")
 
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:

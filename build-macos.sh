@@ -1,33 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# build-macos.sh — KLMP3 macOS (Intel)
-# Build: PyInstaller -> .app -> DMG -> sha256
+# build-macos.sh — KLMP3 macOS (Intel/Apple Silicon)
+# Build: PyInstaller -> .app -> (optional) ZIP -> DMG -> sha256
 #
 # Usage:
 #   ./build-macos.sh
-#   ./build-macos.sh -v 1.0.0
-#   ./build-macos.sh -v 1.0.0 --keep
-#   ./build-macos.sh --zip
+#   ./build-macos.sh -v 2.4.1
+#   ./build-macos.sh -v 2.4.1 --zip
+#   ./build-macos.sh -v 2.4.1 --keep
+#   ./build-macos.sh -v 2.4.1 --arch x86_64
+#   ./build-macos.sh -v 2.4.1 --arch arm64
 #
 # Assumptions:
-# - venv at .venv/
+# - Run at repo root (contains klmp3.py, assets/, tools/, .venv/)
 # - assets/KLMP3.icns exists
-# - tools/macos-x86_64/ffmpeg and ffprobe exist
-# - yt-dlp uses Python module yt_dlp (collected by PyInstaller)
+# - tools/macos-<arch>/ffmpeg, ffprobe, deno exist (executable)
+# - yt-dlp is used as Python module (yt_dlp) + certifi collected by PyInstaller
 
 APP_NAME="KLMP3"
-VERSION="0.0.0"
+VERSION="2.4.1"
 KEEP="0"
 MAKE_ZIP="0"
+ARCH=""   # "x86_64" | "arm64" | auto
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -v|--version) VERSION="${2:-}"; shift 2 ;;
     --keep) KEEP="1"; shift ;;
     --zip) MAKE_ZIP="1"; shift ;;
+    --arch) ARCH="${2:-}"; shift 2 ;;
     -h|--help)
-      sed -n '1,120p' "$0"
+      sed -n '1,200p' "$0"
       exit 0
       ;;
     *) echo "Unknown arg: $1"; exit 1 ;;
@@ -37,61 +41,73 @@ done
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
-# ----- Checks -----
-if [[ ! -d ".venv" ]]; then
-  echo "❌ Missing .venv/ (create venv first)"
+# --- Detect arch if not provided ---
+if [[ -z "$ARCH" ]]; then
+  MACHINE="$(uname -m)"
+  if [[ "$MACHINE" == "arm64" ]]; then
+    ARCH="arm64"
+  else
+    ARCH="x86_64"
+  fi
+fi
+
+if [[ "$ARCH" != "x86_64" && "$ARCH" != "arm64" ]]; then
+  echo "❌ Invalid --arch. Use x86_64 or arm64."
   exit 1
 fi
 
-if [[ ! -f "klmp3.py" ]]; then
-  echo "❌ Missing klmp3.py (run this script at repo root)"
-  exit 1
-fi
+TOOLS_DIR="tools/macos-${ARCH}"
+ICON_PATH="assets/${APP_NAME}.icns"
+PY_FILE="klmp3.py"
 
-if [[ ! -f "assets/${APP_NAME}.icns" ]]; then
-  echo "❌ Missing assets/${APP_NAME}.icns"
-  exit 1
-fi
+# --- Checks ---
+[[ -d ".venv" ]] || { echo "❌ Missing .venv/ (create venv first)"; exit 1; }
+[[ -f "$PY_FILE" ]] || { echo "❌ Missing ${PY_FILE} (run this script at repo root)"; exit 1; }
+[[ -f "$ICON_PATH" ]] || { echo "❌ Missing ${ICON_PATH}"; exit 1; }
 
-if [[ ! -f "tools/macos-x86_64/ffmpeg" ]]; then
-  echo "❌ Missing tools/macos-x86_64/ffmpeg"
-  exit 1
-fi
+for bin in ffmpeg ffprobe deno; do
+  [[ -f "${TOOLS_DIR}/${bin}" ]] || { echo "❌ Missing ${TOOLS_DIR}/${bin}"; exit 1; }
+done
 
-if [[ ! -f "tools/macos-x86_64/ffprobe" ]]; then
-  echo "❌ Missing tools/macos-x86_64/ffprobe"
-  exit 1
-fi
+# Ensure tools are executable (best effort)
+chmod +x "${TOOLS_DIR}/ffmpeg" "${TOOLS_DIR}/ffprobe" "${TOOLS_DIR}/deno" 2>/dev/null || true
 
-# ----- Activate venv -----
+echo "== KLMP3 macOS build =="
+echo " - Version: ${VERSION}"
+echo " - Arch:    ${ARCH}"
+echo " - Tools:   ${TOOLS_DIR}"
+
+# --- Activate venv ---
 # shellcheck disable=SC1091
 source ".venv/bin/activate"
 
 python -V
-python -c "import yt_dlp; print('yt_dlp OK', yt_dlp.version.__version__)" >/dev/null
-python -c "import certifi; print('certifi OK', certifi.where())" >/dev/null
-
 python -m pip install -U pip wheel setuptools >/dev/null
 python -m pip install -U pyinstaller yt-dlp certifi >/dev/null
 
-# ----- Clean -----
+# Quick imports (fail fast)
+python -c "import yt_dlp; print('yt_dlp OK', yt_dlp.version.__version__)" >/dev/null
+python -c "import certifi; print('certifi OK', certifi.where())" >/dev/null
+
+# --- Clean ---
 rm -rf build dist "${APP_NAME}.spec"
 rm -rf "$HOME/Library/Application Support/pyinstaller" || true
 
-# ----- Build .app -----
+# --- Build .app ---
 pyinstaller \
   --name "${APP_NAME}" \
   --windowed \
   --noconfirm \
   --clean \
-  --icon "assets/${APP_NAME}.icns" \
+  --icon "${ICON_PATH}" \
   --add-data "assets:assets" \
-  --add-binary "tools/macos-x86_64/ffmpeg:tools/macos-x86_64" \
-  --add-binary "tools/macos-x86_64/ffprobe:tools/macos-x86_64" \
+  --add-binary "${TOOLS_DIR}/ffmpeg:${TOOLS_DIR}" \
+  --add-binary "${TOOLS_DIR}/ffprobe:${TOOLS_DIR}" \
+  --add-binary "${TOOLS_DIR}/deno:${TOOLS_DIR}" \
   --collect-all yt_dlp \
   --collect-submodules yt_dlp \
   --collect-all certifi \
-  klmp3.py
+  "${PY_FILE}"
 
 APP_PATH="dist/${APP_NAME}.app"
 if [[ ! -d "$APP_PATH" ]]; then
@@ -99,29 +115,46 @@ if [[ ! -d "$APP_PATH" ]]; then
   exit 1
 fi
 
-# ----- Prepare staging -----
-STAGING_DIR="dist_dmg_staging"
-DMG_NAME="${APP_NAME}-${VERSION}-macOS-x86_64"
-DMG_PATH="releases/${DMG_NAME}.dmg"
-ZIP_PATH="releases/${DMG_NAME}.zip"
+# --- Sanity checks inside bundle ---
+BUNDLE_TOOLS="dist/${APP_NAME}.app/Contents/Frameworks/${TOOLS_DIR}"
+echo "== Sanity checks =="
+for bin in ffmpeg ffprobe deno; do
+  if [[ ! -f "${BUNDLE_TOOLS}/${bin}" ]]; then
+    echo "❌ Missing in bundle: ${BUNDLE_TOOLS}/${bin}"
+    exit 1
+  fi
+done
+echo "✅ Tools embedded: ffmpeg, ffprobe, deno"
 
+# --- Release artifacts ---
 mkdir -p releases
+
+BASE_NAME="${APP_NAME}-${VERSION}-macOS-${ARCH}"
+DMG_PATH="releases/${BASE_NAME}.dmg"
+ZIP_PATH="releases/${BASE_NAME}.zip"
+
+# --- Optional ZIP of .app ---
+if [[ "$MAKE_ZIP" == "1" ]]; then
+  rm -f "$ZIP_PATH"
+  # keepParent => includes KLMP3.app folder
+  ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
+  ( cd releases && shasum -a 256 "$(basename "$ZIP_PATH")" > "$(basename "$ZIP_PATH").sha256" )
+  echo "✅ ZIP: ${ZIP_PATH}"
+  echo "✅ SHA: ${ZIP_PATH}.sha256"
+fi
+
+# --- Prepare DMG staging ---
+STAGING_DIR="dist_dmg_staging"
 rm -rf "$STAGING_DIR"
 mkdir -p "$STAGING_DIR"
-
-# Copy app into staging
 cp -R "$APP_PATH" "$STAGING_DIR/"
-
-# Add Applications symlink for drag & drop install
 ln -s /Applications "$STAGING_DIR/Applications"
 
-# Optional: remove quarantine attributes on the built app (best effort)
-# Big Sur doesn't support xattr -r, so use find.
+# Best effort: remove quarantine attrs from built app inside staging (Big Sur friendly)
 find "$STAGING_DIR/${APP_NAME}.app" -exec xattr -d com.apple.quarantine {} \; 2>/dev/null || true
 
-# ----- Create DMG -----
+# --- Create DMG ---
 rm -f "$DMG_PATH"
-
 hdiutil create \
   -volname "${APP_NAME}" \
   -srcfolder "$STAGING_DIR" \
@@ -129,32 +162,22 @@ hdiutil create \
   -format UDZO \
   "$DMG_PATH" >/dev/null
 
-# ----- Optional ZIP of .app (sometimes useful for GitHub Releases) -----
-if [[ "$MAKE_ZIP" == "1" ]]; then
-  rm -f "$ZIP_PATH"
-  ditto -c -k --sequesterRsrc --keepParent "dist/${APP_NAME}.app" "$ZIP_PATH"
-fi
-
-# ----- SHA-256 -----
+# --- SHA-256 for DMG ---
 rm -f "${DMG_PATH}.sha256"
 ( cd releases && shasum -a 256 "$(basename "$DMG_PATH")" > "$(basename "$DMG_PATH").sha256" )
 
-if [[ "$MAKE_ZIP" == "1" ]]; then
-  rm -f "${ZIP_PATH}.sha256"
-  ( cd releases && shasum -a 256 "$(basename "$ZIP_PATH")" > "$(basename "$ZIP_PATH").sha256" )
-fi
-
-# ----- Done -----
 echo
 echo "✅ Done:"
-echo "   - App:  dist/${APP_NAME}.app"
-echo "   - DMG:  ${DMG_PATH}"
-echo "   - SHA:  ${DMG_PATH}.sha256"
+echo " - App: dist/${APP_NAME}.app"
+echo " - DMG: ${DMG_PATH}"
+echo " - SHA: ${DMG_PATH}.sha256"
 if [[ "$MAKE_ZIP" == "1" ]]; then
-  echo "   - ZIP:  ${ZIP_PATH}"
-  echo "   - SHA:  ${ZIP_PATH}.sha256"
+  echo " - ZIP: ${ZIP_PATH}"
+  echo " - SHA: ${ZIP_PATH}.sha256"
 fi
 
 if [[ "$KEEP" != "1" ]]; then
   rm -rf "$STAGING_DIR"
+else
+  echo "ℹ️ Kept staging dir: ${STAGING_DIR}"
 fi

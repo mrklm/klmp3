@@ -4,6 +4,14 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 Le format est inspiré de Keep a Changelog et le versionnement suit une logique sémantique pragmatique.
 
 
+[2.4.1] – 2026-01-17
+
+Modifié
+
+- Adaptation fichier embarqué "deno" pour macOS 
+
+---
+
 [2.4] – 2026-01-17
 
 Ajouté
