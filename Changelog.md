@@ -9,8 +9,9 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 Ajouté
 
 - Boutons Coller et Couper à gauche du champ URL
-- Fonction sélection via combo-box: téléchager 1 seul fichier ou une playlist
-- Option: si option playslist sélectionnée: combien de fichiers --> sélecteur numérique (entre 2 et 1000)
+- Fonction sélection via combo-box: télécharger un seul fichier ou une playlist
+- Option: si option playlist sélectionnée: combien de fichiers --> sélecteur numérique (entre 2 et 1000)
+- (si pas de limite cochée, playlist téléchargée entièrement (max 1000 fichiers))
 
 ---
 
