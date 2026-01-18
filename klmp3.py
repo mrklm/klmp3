@@ -272,6 +272,8 @@ def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event) -> int:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         bufsize=1,
     )
     try:
@@ -348,7 +350,7 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLMP3 - v2.5")
+        self.title("KLMP3 - v2.5.1")
         self.geometry("820x620")
         self.minsize(780, 560)
 
@@ -1422,12 +1424,25 @@ class App(tk.Tk):
                 '--newline',
                 '--no-warnings',
             ]
-            if platform == "youtube":
+            # Respect du mode choisi (single vs playlist)
+            if dl_mode == DL_MODE_PLAYLIST:
+                cmd += ["--yes-playlist"]
+                if limit_on:
+                    try:
+                        n = int(limit_n)
+                    except Exception:
+                        n = 0
+                    if 2 <= n <= 1000:
+                        cmd += ["--playlist-end", str(n)]
+            else:
+                cmd += ["--no-playlist"]
+            # Cookies/JS runtime : pour YouTube, en single OU playlist
+            if ("youtube.com" in url) or ("youtu.be" in url):
                 cmd += ["--cookies-from-browser", "firefox"]
                 self.log("🍪 Cookies YouTube : lecture depuis le navigateur (Firefox)")
 
-                if getattr(self, "deno_path", None):
-                    cmd += ["--js-runtimes", f"deno:{self.deno_path}", "--remote-components", "ejs:github"]
+            if getattr(self, "deno_path", None):
+                cmd += ["--js-runtimes", f"deno:{self.deno_path}", "--remote-components", "ejs:github"]
 
             self.log("▶️ yt-dlp (binaire) : " + " ".join(cmd))
 
@@ -1557,11 +1572,17 @@ class App(tk.Tk):
         return False, f"ffmpeg a échoué (code {rc})."
 
     def _safe_remove(self, path: str):
-        try:
-            os.remove(path)
-            self.log("🧹 Intermédiaire supprimé.")
-        except Exception:
-            pass
+        # Windows peut garder le fichier verrouillé très brièvement après ffmpeg.
+        for attempt in range(1, 6):  # 5 essais
+            try:
+                os.remove(path)
+                self.log("🧹 Intermédiaire supprimé.")
+                return
+            except Exception as e:
+                if attempt == 5:
+                    self.log(f"⚠️ Intermédiaire NON supprimé : {path} ({e})")
+                    return
+                time.sleep(0.2)
 
 
 if __name__ == "__main__":

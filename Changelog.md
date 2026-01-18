@@ -4,6 +4,16 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 Le format est inspiré de Keep a Changelog et le versionnement suit une logique sémantique pragmatique.
 
 
+[2.5.1] – 2026-01-18
+
+Modifié
+
+ - windows > Forccage du UTF-8 et remplace les caractères illisibles au lieu de crasher
+ - reconnaissance ameliorée des URL raccourcies les "Youtu.be" (non c'est pas la Belgique)
+ - Réparation bug: fichier unique VS playlist 
+
+---
+
 [2.5] – 2026-01-18
 
 Ajouté
