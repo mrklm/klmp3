@@ -4,6 +4,16 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 Le format est inspiré de Keep a Changelog et le versionnement suit une logique sémantique pragmatique.
 
 
+[2.5] – 2026-01-18
+
+Ajouté
+
+- Boutons Coller et Couper à gauche du champ URL
+- Fonction sélection via combo-box: téléchager 1 seul fichier ou une playlist
+- Option: si option playslist sélectionnée: combien de fichiers --> champs à remplir (entre 2 et 1000)
+
+---
+
 [2.4.1] – 2026-01-17
 
 Modifié

@@ -15,6 +15,7 @@ Notes:
 
 import os
 import re
+import urllib.parse
 import sys
 import shutil
 import threading
@@ -66,6 +67,11 @@ _setup_ssl_certificates()
 
 
 MAX_URLS = 10
+
+
+# Téléchargement : modes
+DL_MODE_SINGLE = "Un seul fichier"
+DL_MODE_PLAYLIST = "La playlist complète"
 
 # Bibli de thèmes (issus de Garage)
 THEMES = {
@@ -342,7 +348,7 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLMP3 - v2.4.1")
+        self.title("KLMP3 - v2.5")
         self.geometry("820x620")
         self.minsize(780, 560)
 
@@ -360,7 +366,14 @@ class App(tk.Tk):
         self.url_vars: list[tk.StringVar] = [tk.StringVar()]
         self.url_entries: list[ttk.Entry] = []
 
-        # UI vars
+        
+        self._focused_url_index: int = 0
+
+        # Playlist / single
+        self.download_mode_var = tk.StringVar(value=DL_MODE_SINGLE)
+        self.playlist_limit_enabled_var = tk.BooleanVar(value=False)
+        self.playlist_limit_n_var = tk.IntVar(value=50)
+# UI vars
         self.outdir_var = tk.StringVar(value=default_outdir())
 
         # Config persistée (config.json dans dossier utilisateur)
@@ -456,25 +469,37 @@ class App(tk.Tk):
 
         # URLs block
         frm_urls = ttk.Frame(self.tab_general)
-        frm_urls.pack(fill="x", **pad)
+        frm_urls.pack(fill="x", padx=10, pady=(0, 10))
 
-        # Libellé centré au-dessus de la ligne URL
-        ttk.Label(
-            frm_urls,
-            text="⬇️ Copier l'URL ici :",
-            anchor="center",
-            justify="center"
-        ).grid(row=0, column=0, columnspan=3, sticky="ew")
+        ttk.Label(frm_urls, text="⬇️ Copier l'URL ici :", anchor="center").grid(row=0, column=0, columnspan=3, sticky="ew")
 
-        # Ligne URL : [Coller]  [Entry/Entries]  [+ / -]
-        self.btn_paste = ttk.Button(frm_urls, text="Coller", command=self.paste_urls)
-        self.btn_paste.grid(row=1, column=0, sticky="nsew", padx=(0, 8), ipady=2)
+        frm_clip = ttk.Frame(frm_urls)
+        frm_clip.grid(row=1, column=0, rowspan=2, sticky="ns", padx=(0, 8))
+
+        self.btn_paste = ttk.Button(frm_clip, text="Coller", command=self.paste_urls, width=8)
+        self.btn_paste.grid(row=0, column=0, sticky="ew")
+
+        self.btn_cut = ttk.Button(frm_clip, text="Couper", command=self.cut_url, width=8)
+        self.btn_cut.grid(row=1, column=0, sticky="ew", pady=(6, 0))
 
         self.frm_url_entries = ttk.Frame(frm_urls)
         self.frm_url_entries.grid(row=1, column=1, rowspan=2, sticky="ew")
+        # Ligne URL : [Coller/Couper] | [URL(s)] | [+/-]
+        frm_actions = ttk.Frame(frm_urls)
+        frm_actions.grid(row=1, column=0, sticky="ns", padx=(0, 8))
+
+        # Ordre inversé : Couper puis Coller
+        self.btn_cut = ttk.Button(frm_actions, text="Couper", command=self.cut_url, width=8)
+        self.btn_cut.grid(row=0, column=0, sticky="ew")
+
+        self.btn_paste = ttk.Button(frm_actions, text="Coller", command=self.paste_urls, width=8)
+        self.btn_paste.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+
+        self.frm_url_entries = ttk.Frame(frm_urls)
+        self.frm_url_entries.grid(row=1, column=1, sticky="ew")
 
         frm_pm = ttk.Frame(frm_urls)
-        frm_pm.grid(row=1, column=2, rowspan=2, sticky="ns", padx=(8, 0))
+        frm_pm.grid(row=1, column=2, sticky="ns", padx=(8, 0))
 
         self.btn_add = ttk.Button(frm_pm, text="+", width=3, command=self.add_url_row)
         self.btn_add.grid(row=0, column=0, sticky="ew")
@@ -485,8 +510,36 @@ class App(tk.Tk):
         frm_urls.columnconfigure(1, weight=1)
 
         self._rebuild_url_entries()
+        self._refresh_url_buttons()
 
-        # Output dir
+        # Ligne "Télécharger" (single vs playlist)
+        frm_dl = ttk.Frame(self.tab_general)
+        frm_dl.pack(fill="x", padx=10, pady=(0, 10))
+
+        ttk.Label(frm_dl, text="Télécharger :").grid(row=0, column=0, sticky="w")
+        self.cb_download_mode = ttk.Combobox(
+            frm_dl,
+            textvariable=self.download_mode_var,
+            values=[DL_MODE_SINGLE, DL_MODE_PLAYLIST],
+            state="readonly",
+            width=22
+        )
+        self.cb_download_mode.grid(row=0, column=1, sticky="w", padx=(8, 0))
+        self.cb_download_mode.bind("<<ComboboxSelected>>", lambda e: self._update_download_controls())
+
+        self.chk_playlist_limit = ttk.Checkbutton(
+            frm_dl,
+            text="Limiter à",
+            variable=self.playlist_limit_enabled_var,
+            command=self._update_download_controls
+        )
+        self.chk_playlist_limit.grid(row=0, column=2, sticky="w", padx=(18, 0))
+
+        self.spin_playlist_limit = ttk.Spinbox(frm_dl, from_=2, to=1000, textvariable=self.playlist_limit_n_var, width=6)
+        self.spin_playlist_limit.grid(row=0, column=3, sticky="w", padx=(8, 0))
+        ttk.Label(frm_dl, text="fichiers").grid(row=0, column=4, sticky="w", padx=(6, 0))
+
+        self._update_download_controls()
         frm_mid = ttk.Frame(self.tab_general)
         frm_mid.pack(fill="x", **pad)
 
@@ -803,10 +856,11 @@ class App(tk.Tk):
         for i, var in enumerate(self.url_vars):
             ent = ttk.Entry(self.frm_url_entries, textvariable=var)
             ent.grid(row=i, column=0, sticky="ew", pady=(4 if i == 0 else 6, 0))
+            ent.bind("<FocusIn>", lambda e, idx=i: self._set_focused_url_index(idx))
+            ent.bind("<KeyRelease>", lambda e: self._update_download_controls())
             self.url_entries.append(ent)
 
         self.frm_url_entries.columnconfigure(0, weight=1)
-
     def _refresh_url_buttons(self):
         n = len(self.url_vars)
         self.btn_add.configure(state=("normal" if n < MAX_URLS else "disabled"))
@@ -876,6 +930,147 @@ class App(tk.Tk):
         if changed:
             self._rebuild_url_entries()
             self._refresh_url_buttons()
+    
+    def cut_url(self):
+        """Coupe l'URL active : copie vers presse-papiers + vide la ligne."""
+        idx = getattr(self, "_focused_url_index", 0)
+        if idx < 0 or idx >= len(self.url_vars):
+            idx = 0
+        txt = (self.url_vars[idx].get() or "").strip()
+        if not txt:
+            return
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(txt)
+        except Exception:
+            pass
+        self.url_vars[idx].set("")
+        self._update_download_controls()
+
+    def _set_focused_url_index(self, idx: int):
+        try:
+            self._focused_url_index = int(idx)
+        except Exception:
+            self._focused_url_index = 0
+        self._update_download_controls()
+
+    def _get_active_url(self) -> str:
+        idx = getattr(self, "_focused_url_index", 0)
+        if 0 <= idx < len(self.url_vars):
+            u = (self.url_vars[idx].get() or "").strip()
+            if u:
+                return u
+        for v in self.url_vars:
+            u = (v.get() or "").strip()
+            if u:
+                return u
+        return ""
+
+    def _classify_url(self, url: str) -> str:
+        """Retourne 'single', 'playlist', ou 'ambiguous' (surtout pour YouTube)."""
+        try:
+            pu = urllib.parse.urlparse(url)
+            q = urllib.parse.parse_qs(pu.query or "")
+            host = (pu.netloc or "").lower()
+            path = (pu.path or "").lower()
+        except Exception:
+            return "ambiguous"
+
+        has_v = bool(q.get("v", [""])[0])
+        has_list = bool(q.get("list", [""])[0])
+
+        if "youtube." in host and "/playlist" in path and has_list:
+            return "playlist"
+        if "youtu.be" in host and has_v is False:
+            # youtu.be/<id> (pas de query v)
+            if has_list:
+                return "ambiguous"
+            return "single"
+        if "/watch" in path and has_v:
+            if has_list:
+                return "ambiguous"
+            return "single"
+        if has_list and not has_v:
+            return "playlist"
+        return "ambiguous"
+
+    def _update_download_controls(self):
+        # Grise/force la sélection selon l'URL active
+        url = self._get_active_url()
+        kind = self._classify_url(url) if url else "ambiguous"
+
+        if kind == "single":
+            self.download_mode_var.set(DL_MODE_SINGLE)
+            try:
+                self.cb_download_mode.configure(state="disabled")
+            except Exception:
+                pass
+        else:
+            try:
+                self.cb_download_mode.configure(state="readonly")
+            except Exception:
+                pass
+            if kind == "playlist" and self.download_mode_var.get() != DL_MODE_PLAYLIST:
+                self.download_mode_var.set(DL_MODE_PLAYLIST)
+
+        mode = self.download_mode_var.get()
+        in_playlist = (mode == DL_MODE_PLAYLIST)
+        try:
+            self.chk_playlist_limit.configure(state=("normal" if in_playlist else "disabled"))
+        except Exception:
+            pass
+        if not in_playlist:
+            self.playlist_limit_enabled_var.set(False)
+
+        limit_on = bool(self.playlist_limit_enabled_var.get()) and in_playlist
+        try:
+            self.spin_playlist_limit.configure(state=("normal" if limit_on else "disabled"))
+        except Exception:
+            pass
+
+    def _ensure_playlist_subdir(self, base_outdir: str, url: str) -> str:
+        """Crée un sous-dossier au nom de la playlist et renvoie son chemin (best effort)."""
+        list_id = ""
+        try:
+            pu = urllib.parse.urlparse(url)
+            q = urllib.parse.parse_qs(pu.query or "")
+            list_id = (q.get("list") or [""])[0]
+        except Exception:
+            list_id = ""
+
+        probe_url = url
+        if list_id:
+            probe_url = f"https://www.youtube.com/playlist?list={list_id}"
+
+        title = ""
+        try:
+            import yt_dlp
+            ydl_opts = {"quiet": True, "no_warnings": True}
+            token = (self.yt_browser_token_var.get().strip() if getattr(self, "yt_browser_token_var", None) else "firefox") or "firefox"
+            ydl_opts["cookiesfrombrowser"] = (token,)
+            deno_path = getattr(self, "deno_path", None)
+            if deno_path and os.path.isfile(deno_path):
+                ydl_opts["js_runtimes"] = {"deno": {"path": deno_path}}
+                ydl_opts["remote_components"] = {"ejs:github"}
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(probe_url, download=False)
+            if isinstance(info, dict):
+                title = info.get("title") or info.get("playlist_title") or ""
+        except Exception:
+            title = ""
+
+        name = (title or list_id or "playlist").strip()
+        name = name.replace("/", "_").replace("\\", "_").replace(":", "_")
+        name = re.sub(r"[\x00-\x1f\x7f]", "", name).strip()
+        name = re.sub(r"\s+", " ", name)[:120].strip() or "playlist"
+
+        out = os.path.join(base_outdir, name)
+        try:
+            os.makedirs(out, exist_ok=True)
+            return out
+        except Exception:
+            return base_outdir
+
     def choose_outdir(self):
         """Choisit le dossier de sortie (sans rajouter de sous-dossier automatique)."""
         d = filedialog.askdirectory(
@@ -991,12 +1186,23 @@ class App(tk.Tk):
         self.stop_flag.clear()
         self.progress.start(10)
 
-        self.worker_thread = threading.Thread(target=self._worker_queue, args=(urls, outdir), daemon=True)
-        self.worker_thread.start()
+        # Mode téléchargement (playlist / single) + limite éventuelle
+        dl_mode = (self.download_mode_var.get().strip() if hasattr(self, "download_mode_var") else DL_MODE_SINGLE) or DL_MODE_SINGLE
+        limit_on = bool(self.playlist_limit_enabled_var.get()) if hasattr(self, "playlist_limit_enabled_var") else False
+        try:
+            limit_n = int(self.playlist_limit_n_var.get() or 0) if hasattr(self, "playlist_limit_n_var") else 0
+        except Exception:
+            limit_n = 0
 
+        self.worker_thread = threading.Thread(
+            target=self._worker_queue,
+            args=(urls, outdir, dl_mode, limit_on, limit_n),
+            daemon=True
+        )
+        self.worker_thread.start()
     def stop(self):
-        self.stop_flag.set()
-        self.log("⏹️ Arrêt demandé… (le processus va s’interrompre)")
+            self.stop_flag.set()
+            self.log("⏹️ Arrêt demandé… (le processus va s’interrompre)")
 
     def _finish(self, ok: bool, msg: str):
         self.progress.stop()
@@ -1009,7 +1215,7 @@ class App(tk.Tk):
             self.log("❌ Erreur : " + msg)
             messagebox.showerror("Erreur", msg)
 
-    def _worker_queue(self, urls: list[str], outdir: str):
+    def _worker_queue(self, urls: list[str], outdir: str, dl_mode: str, limit_on: bool, limit_n: int):
         try:
             fmt = self.audio_format_var.get().strip().lower()
             keep_inter = self.keep_intermediate_var.get()
@@ -1025,10 +1231,10 @@ class App(tk.Tk):
 
                 if is_twitch(url):
                     self.log("🎯 Plateforme détectée : Twitch (VOD) — téléchargement Audio_Only")
-                    ok, final_msg = self._pipeline_download_and_convert(url, outdir, fmt, keep_inter, platform="twitch")
+                    ok, final_msg = self._pipeline_download_and_convert(url, outdir, fmt, keep_inter, platform="twitch", dl_mode=dl_mode, limit_on=limit_on, limit_n=limit_n)
                 else:
                     self.log("🎯 Plateforme détectée : YouTube (ou autre) — téléchargement bestaudio")
-                    ok, final_msg = self._pipeline_download_and_convert(url, outdir, fmt, keep_inter, platform="youtube")
+                    ok, final_msg = self._pipeline_download_and_convert(url, outdir, fmt, keep_inter, platform="youtube", dl_mode=dl_mode, limit_on=limit_on, limit_n=limit_n)
 
                 if not ok:
                     self.after(0, self._finish, False, final_msg)
@@ -1041,14 +1247,19 @@ class App(tk.Tk):
 
     # -------------- Download + Convert (unifié) --------------
 
-    def _pipeline_download_and_convert(self, url: str, outdir: str, fmt: str, keep_inter: bool, platform: str):
+    def _pipeline_download_and_convert(self, url: str, outdir: str, fmt: str, keep_inter: bool, platform: str, dl_mode: str, limit_on: bool, limit_n: int):
         """
         Télécharge un fichier audio (intermédiaire) avec yt-dlp, puis convertit avec ffmpeg.
         """
         # Template intermédiaire : on garde l'extension d'origine
-        outtmpl = os.path.join(outdir, "%(title).200s [%(id)s].%(ext)s")
+        url_outdir = outdir
 
-        ok, downloaded = self._download_audio(url, outtmpl, platform=platform)
+        if platform == "youtube" and dl_mode == DL_MODE_PLAYLIST:
+            url_outdir = self._ensure_playlist_subdir(outdir, url)
+
+        outtmpl = os.path.join(url_outdir, "%(title).200s [%(id)s].%(ext)s")
+
+        ok, downloaded = self._download_audio(url, outtmpl, platform=platform, dl_mode=dl_mode, limit_on=limit_on, limit_n=limit_n)
         if not ok:
             return False, downloaded
 
@@ -1072,7 +1283,7 @@ class App(tk.Tk):
 
         return True, f"OK ({converted} fichier(s) converti(s))"
 
-    def _download_audio(self, url: str, outtmpl: str, platform: str):
+    def _download_audio(self, url: str, outtmpl: str, platform: str, dl_mode: str, limit_on: bool, limit_n: int):
         """
         Retourne (ok, path_ou_message).
         """
@@ -1167,12 +1378,22 @@ class App(tk.Tk):
             ydl_opts = {
                 "format": fmt_sel,
                 "outtmpl": outtmpl,
-                "noplaylist": False,
+                "noplaylist": (dl_mode != DL_MODE_PLAYLIST),
                 "quiet": True,
                 "no_warnings": True,
                 "progress_hooks": [hook],
                 "logger": _YDLLogger(self.log),
             }
+
+
+            # Playlist : limite éventuelle
+            if dl_mode == DL_MODE_PLAYLIST and limit_on:
+                try:
+                    n = int(limit_n)
+                except Exception:
+                    n = 0
+                if 2 <= n <= 1000:
+                    ydl_opts["playlistend"] = n
             # YouTube : cookies depuis le navigateur (selon choix utilisateur)
             if platform == "youtube":
                 token = (self.yt_browser_token_var.get().strip() if getattr(self, "yt_browser_token_var", None) else "") or "firefox"

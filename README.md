@@ -138,13 +138,18 @@ Les contributions sont les bienvenues via Pull Requests.
 
 ⚠️ Avertissement
 
-Ce logiciel est fourni **sans garantie**. L'auteur décline toute responsabilité en cas de dommage ou de dysfonctionnement.
+Ce logiciel est fourni **sans garantie**. L'auteur décline 
+toute responsabilité en cas de dommage ou de dysfonctionnement.
 
 ---
 
 ## 💡 Pourquoi ce projet est-il sous licence libre ?
 
-Ce projet s'inscrit dans la philosophie du logiciel libre, promue par des associations comme [April](https://www.april.org/). Nous croyons que le partage des connaissances et des outils est essentiel pour une société numérique plus juste et transparente.
+Ce projet s'inscrit dans la philosophie du logiciel libre, promue par des 
+associations comme [April](https://www.april.org/). 
+
+Nous croyons que le partage des connaissances et des outils est essentiel
+ pour une société numérique plus juste et transparente.
 
 ---
 
