@@ -10,7 +10,7 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 
 ---
 
-## Aperçu
+## 👓️ Aperçu
 
 ![Fenêtre options](screenshots/KLmp3.png)
 ![Fenêtre general](screenshots/general.png)
@@ -23,7 +23,7 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 👉 Les versions compilées sont disponibles ici :  
 🔗 [GitHub Releases – KLmp3](https://github.com/mrklm/klmp3/releases)
 
-### Applications standalone (recommandé)
+## 💾 Applications standalone (recommandé)
 
 - 🐧 **Linux**  
   *(à venir)*
@@ -37,7 +37,7 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 
 ---         
 
-## Fonctionnalités
+## 🧰 Fonctionnalités
 
 🪠 Extraction audio YouTube et Twitch VOD
 
@@ -45,15 +45,21 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 
 📟️ Conversion au choix en MP3, M4A, OPUS, FLAC, OGG, WAV
 
-📺️ Interface graphique légère (Tkinter pur)
+🗃️ Choix de telechargement: un fichier ou playlist entière
+
+⚠️ Option nombre de fichiers maximum dans une playlist
 
 📁 Dossier de sortie automatique par date --> ~/klmp3/AA/MM/JJ/
+
+🗂️ Sous dossier automatique pour les playlist
+
+🏳️‍🌈 Thèmes variiés: sombres, clairs et rigolos.
+
+📺️ Interface graphique légère (Tkinter pur)
 
 🦏 Détection robuste de ffmpeg / ffprobe (PATH ou tools/)
 
 🗒️ Journal d’exécution intégré
-
-🏳️‍🌈 Thèmes variiés: sombres, clairs et rigolos.
 
 ---
 
@@ -95,11 +101,13 @@ klmp3/
 
 Pour lancer KLMP3 depuis le code source ou contribuer au projet.
 
-### Pré-requis
+## ⚙️ Pré-requis
+
 - Python ≥ 3.9
 - Git
 
-### Installation des dépendances
+## 🔧 Installation des dépendances
+
 ```bash
 python -m pip install -r requirements.txt
 
@@ -107,14 +115,13 @@ Lancement
 
 python klmp3.py
 
-🏗️ Build (développeurs)
-Dépendances de build
+## 🏗️ Build (développeurs)
 
 python -m pip install -r build-requirements.txt
 
 ---
 
-✏️ Notes
+## ✏️ Notes
 
 Aucun accès réseau autre que celui de yt-dlp
 
@@ -124,19 +131,19 @@ Fonctionne sous macOS / Linux / Windows
 
 ---
 
-📜 Licence
+## 📜 Licence
 
 Ce logiciel est distribué sous la GNU General Public License v3.0.
 
 ---
 
-🛠️ Contribuer
+## 🛠️ Contribuer
 
 Les contributions sont les bienvenues via Pull Requests.
 
 ---
 
-⚠️ Avertissement
+## ⚠️ Avertissement
 
 Ce logiciel est fourni **sans garantie**. L'auteur décline 
 toute responsabilité en cas de dommage ou de dysfonctionnement.
@@ -149,11 +156,11 @@ Ce projet s'inscrit dans la philosophie du logiciel libre, promue par des
 associations comme [April](https://www.april.org/). 
 
 Nous croyons que le partage des connaissances et des outils est essentiel
- pour une société numérique plus juste et transparente.
+pour une société numérique plus juste et transparente.
 
 ---
 
-📬 Contact:
+## 📬 Contact:
 
 clementmorel@free.fr
 
