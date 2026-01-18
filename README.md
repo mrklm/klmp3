@@ -84,7 +84,11 @@ FFmpeg peut être :
 
 --- 
 
-## 🚀 Lancement: python3 klmp3.py
+## 🚀 Lancement: 
+
+```bash
+python3 klmp3.py
+```
 
 Arborescence minimale:
 
@@ -106,19 +110,21 @@ Pour lancer KLMP3 depuis le code source ou contribuer au projet.
 - Python ≥ 3.9
 - Git
 
-## 🔧 Installation des dépendances
+---
 
+## 🔧 Installation des dépendances
 ```bash
 python -m pip install -r requirements.txt
+```
 
-Lancement
-
+## 🚀 Lancement
+```bash
 python klmp3.py
-
+```
 ## 🏗️ Build (développeurs)
-
+```bash
 python -m pip install -r build-requirements.txt
-
+```
 ---
 
 ## ✏️ Notes
