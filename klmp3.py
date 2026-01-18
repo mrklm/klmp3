@@ -473,27 +473,17 @@ class App(tk.Tk):
 
         ttk.Label(frm_urls, text="⬇️ Copier l'URL ici :", anchor="center").grid(row=0, column=0, columnspan=3, sticky="ew")
 
-        frm_clip = ttk.Frame(frm_urls)
-        frm_clip.grid(row=1, column=0, rowspan=2, sticky="ns", padx=(0, 8))
-
-        self.btn_paste = ttk.Button(frm_clip, text="Coller", command=self.paste_urls, width=8)
-        self.btn_paste.grid(row=0, column=0, sticky="ew")
-
-        self.btn_cut = ttk.Button(frm_clip, text="Couper", command=self.cut_url, width=8)
-        self.btn_cut.grid(row=1, column=0, sticky="ew", pady=(6, 0))
-
-        self.frm_url_entries = ttk.Frame(frm_urls)
-        self.frm_url_entries.grid(row=1, column=1, rowspan=2, sticky="ew")
         # Ligne URL : [Coller/Couper] | [URL(s)] | [+/-]
+
         frm_actions = ttk.Frame(frm_urls)
         frm_actions.grid(row=1, column=0, sticky="ns", padx=(0, 8))
 
-        # Ordre inversé : Couper puis Coller
-        self.btn_cut = ttk.Button(frm_actions, text="Couper", command=self.cut_url, width=8)
-        self.btn_cut.grid(row=0, column=0, sticky="ew")
-
+        # Ordre voulu : Coller puis Couper
         self.btn_paste = ttk.Button(frm_actions, text="Coller", command=self.paste_urls, width=8)
-        self.btn_paste.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+        self.btn_paste.grid(row=0, column=0, sticky="ew")
+
+        self.btn_cut = ttk.Button(frm_actions, text="Couper", command=self.cut_url, width=8)
+        self.btn_cut.grid(row=1, column=0, sticky="ew", pady=(6, 0))
 
         self.frm_url_entries = ttk.Frame(frm_urls)
         self.frm_url_entries.grid(row=1, column=1, sticky="ew")
@@ -932,20 +922,14 @@ class App(tk.Tk):
             self._refresh_url_buttons()
     
     def cut_url(self):
-        """Coupe l'URL active : copie vers presse-papiers + vide la ligne."""
+        """Efface l'URL active (sans modifier le presse-papiers)."""
         idx = getattr(self, "_focused_url_index", 0)
         if idx < 0 or idx >= len(self.url_vars):
             idx = 0
-        txt = (self.url_vars[idx].get() or "").strip()
-        if not txt:
-            return
-        try:
-            self.clipboard_clear()
-            self.clipboard_append(txt)
-        except Exception:
-            pass
+
         self.url_vars[idx].set("")
         self._update_download_controls()
+        self._refresh_url_buttons()
 
     def _set_focused_url_index(self, idx: int):
         try:

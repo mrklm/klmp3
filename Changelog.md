@@ -10,7 +10,7 @@ Ajouté
 
 - Boutons Coller et Couper à gauche du champ URL
 - Fonction sélection via combo-box: téléchager 1 seul fichier ou une playlist
-- Option: si option playslist sélectionnée: combien de fichiers --> champs à remplir (entre 2 et 1000)
+- Option: si option playslist sélectionnée: combien de fichiers --> sélecteur numérique (entre 2 et 1000)
 
 ---
 
