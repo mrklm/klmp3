@@ -12,6 +12,7 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 
 ## Aperçu
 
+![Fenêtre options](screenshots/KLmp3.png)
 ![Fenêtre general](screenshots/general.png)
 ![Fenêtre options](screenshots/options.png)
 
