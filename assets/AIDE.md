@@ -1,6 +1,12 @@
+
+
+
 🎵  💻️  🎧  🎚️  🎸 -KLmp3- 🥁  🎛️  🔊  💽  📻️ 
 
+
+
 Aide & mode d’emploi
+
 
 ---
 
@@ -291,7 +297,11 @@ KLmp3 :
 
 
 
+
+
 🎶 Bonne extraction & Bonne écoute 🎶
+
+
 
 
 
@@ -308,7 +318,7 @@ KLmp3 :
 🔎 mais alors qu’est-ce que quoi comment ? 🔍️
 
 
-🕯️ Sous le capot de KLMP3 : mais qui fait quoi donc ? 📋️
+🕯️ Sous le capot de KLmp3 : mais qui fait quoi donc ? 📋️
 
 
 🐍 yt-dlp — le cerveau explorateur 🧭
@@ -347,7 +357,7 @@ ffmpeg, c’est le couteau suisse multimédia ultime.
 
 Un outil capable de transformer presque n’importe quoi en presque n’importe quoi.
 
-👉 Son rôle dans KLMP3 :
+👉 Son rôle dans KLmp3 :
 
 🎧 convertir l’audio téléchargé vers le format choisi :
 
@@ -385,7 +395,7 @@ ffprobe est le petit frère silencieux de ffmpeg.
 
 🧪 vérifier ce que ffmpeg sait (encodeurs disponibles)
 
-Dans KLMP3, il sert notamment à :
+Dans KLmp3, il sert notamment à :
 
 savoir si certains encodeurs sont présents
 
@@ -411,7 +421,7 @@ Certaines vidéos nécessitent désormais :
 
 👉 Deno est un runtime JavaScript moderne (alternatif à Node.js), sécurisé et autonome.
 
-Dans KLMP3 :
+Dans KLmp3 :
 
 Deno permet à yt-dlp de résoudre ces défis JavaScript
 
@@ -429,7 +439,7 @@ sans espionnage 😇
 
 📉 S’il est absent :
 
-KLMP3 continue de fonctionner
+KLmp3 continue de fonctionner
 
 mais certaines vidéos peuvent échouer (mode dégradé)
 
@@ -439,7 +449,7 @@ mais certaines vidéos peuvent échouer (mode dégradé)
 
 🧰 Pourquoi des outils “embarqué́s” ?
 
-KLMP3 peut fonctionner avec :
+KLmp3 peut fonctionner avec :
 
 des outils installés dans le système 🧭
 
@@ -467,4 +477,4 @@ Avantages de l’embarqué :
 
 🦕 Deno → aide yt-dlp à passer les pièges JavaScript
 
-📦 KLMP3 → orchestre tout ça proprement.💙
+📦 KLmp3 → orchestre tout ça proprement.💙
