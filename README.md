@@ -26,7 +26,7 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 ## 💾 Applications standalone (recommandé)
 
 - 🐧 **Linux**  
-  - *(à venir)*
+  - [KLMP3-2.6.2-linux-x86_64.tar.gz](https://github.com/mrklm/klmp3/releases)
 
 - 🍎 **macOS**
   - [KLMP3-2.5-macOS-x86_64.dmg](https://github.com/mrklm/klmp3/releases)
