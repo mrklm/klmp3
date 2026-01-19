@@ -1088,7 +1088,7 @@ class App(tk.Tk):
         if not self.ffprobe_path:
             missing.append("ffprobe")
 
-        # yt-dlp : module Python (recommandé) ou binaire (secours)
+        # yt-dlp : thon (recommandé) ou binaire (secours)
         ytdlp_ok = (getattr(self, "ytdlp_mode", "binary") == "module") or bool(getattr(self, "ytdlp_path", None))
         if not ytdlp_ok:
             missing.append("yt-dlp")

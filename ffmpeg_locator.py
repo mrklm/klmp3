@@ -74,25 +74,24 @@ def _is_executable(path: str) -> bool:
 
 def find_ffmpeg_tools_first() -> FFmpegPaths:
     """
-    Stratégie :
-    1) Cherche dans PATH
-    2) Sinon cherche dans tools/<platform>/
+    Stratégie (portable-friendly) :
+    1) Cherche dans tools/<platform>/ en premier
+    2) Sinon cherche dans PATH
     """
+    cand_ffmpeg = _candidate_in_tools("ffmpeg")
+    cand_ffprobe = _candidate_in_tools("ffprobe")
+
+    # 1) TOOLS d'abord
+    if _is_executable(cand_ffmpeg) and _is_executable(cand_ffprobe):
+        return FFmpegPaths(ffmpeg=cand_ffmpeg, ffprobe=cand_ffprobe, source="TOOLS")
+
+    # 2) PATH ensuite
     ffmpeg_path = shutil.which("ffmpeg")
     ffprobe_path = shutil.which("ffprobe")
     if ffmpeg_path and ffprobe_path:
         return FFmpegPaths(ffmpeg=ffmpeg_path, ffprobe=ffprobe_path, source="PATH")
 
-    cand_ffmpeg = _candidate_in_tools("ffmpeg")
-    cand_ffprobe = _candidate_in_tools("ffprobe")
+    # Rien trouvé proprement
+    return FFmpegPaths(ffmpeg=None, ffprobe=None, source="MISSING")
 
-    if _is_executable(cand_ffmpeg) and _is_executable(cand_ffprobe):
-        return FFmpegPaths(ffmpeg=cand_ffmpeg, ffprobe=cand_ffprobe, source="TOOLS")
-
-    # Si l'un des deux manque, on garde ce qu'on a trouvé.
-    # (Mais KLmp3 exigera les deux au check.)
-    return FFmpegPaths(
-        ffmpeg=ffmpeg_path if ffmpeg_path else (cand_ffmpeg if _is_executable(cand_ffmpeg) else None),
-        ffprobe=ffprobe_path if ffprobe_path else (cand_ffprobe if _is_executable(cand_ffprobe) else None),
-        source="MISSING",
-    )
+    

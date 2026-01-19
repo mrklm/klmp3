@@ -3,6 +3,15 @@ Changelog
 Toutes les modifications notables de ce projet sont documentées dans ce fichier.
 Le format est inspiré de Keep a Changelog et le versionnement suit une logique sémantique pragmatique.
 
+---
+
+[2.5.1] – 2026-01-18
+
+Modifié
+
+ - Pour stocker ffmpeg & ffprobe on priviliégie le repertoire tools au path de l'ordinateur
+
+---
 
 [2.5.1] – 2026-01-18
 
