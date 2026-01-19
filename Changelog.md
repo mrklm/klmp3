@@ -5,7 +5,7 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
-[2.5.1] – 2026-01-18
+[2.5.2] – 2026-01-19
 
 Modifié
 
