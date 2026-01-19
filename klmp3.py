@@ -1100,7 +1100,10 @@ class App(tk.Tk):
 
     def _ensure_playlist_subdir(self, base_outdir: str, url: str) -> str:
         """Crée un sous-dossier au nom de la playlist et renvoie son chemin (best effort)."""
+        title = ""
         list_id = ""
+
+        # 1) Extraire le list_id si présent
         try:
             pu = urllib.parse.urlparse(url)
             q = urllib.parse.parse_qs(pu.query or "")
@@ -1108,27 +1111,29 @@ class App(tk.Tk):
         except Exception:
             list_id = ""
 
-        probe_url = url
-        if list_id:
-            probe_url = f"https://www.youtube.com/playlist?list={list_id}"
-
-        title = ""
+        # 2) Best effort : récupérer un titre lisible via yt_dlp (si dispo)
         try:
-            import yt_dlp
-            ydl_opts = {"quiet": True, "no_warnings": True}
-            token = (self.yt_browser_token_var.get().strip() if getattr(self, "yt_browser_token_var", None) else "firefox") or "firefox"
-            ydl_opts["cookiesfrombrowser"] = (token,)
-            deno_path = getattr(self, "deno_path", None)
-            if deno_path and os.path.isfile(deno_path):
-                ydl_opts["js_runtimes"] = {"deno": {"path": deno_path}}
-                ydl_opts["remote_components"] = {"ejs:github"}
+            import yt_dlp  # type: ignore
+
+            ydl_opts = {
+                "quiet": True,
+                "no_warnings": True,
+                "skip_download": True,
+                "extract_flat": True,      # évite la résolution lourde
+                "playlist_items": "1",     # juste pour obtenir le titre, pas toute la playlist
+                "socket_timeout": 10,
+                "retries": 1,
+                "fragment_retries": 0,
+            }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(probe_url, download=False)
+                info = ydl.extract_info(url, download=False)
+
             if isinstance(info, dict):
-                title = info.get("title") or info.get("playlist_title") or ""
+                title = (info.get("title") or info.get("playlist_title") or info.get("playlist") or "").strip()
         except Exception:
             title = ""
 
+        # 3) Nom du dossier
         name = (title or list_id or "playlist").strip()
         name = name.replace("/", "_").replace("\\", "_").replace(":", "_")
         name = re.sub(r"[\x00-\x1f\x7f]", "", name).strip()
@@ -1140,6 +1145,7 @@ class App(tk.Tk):
             return out
         except Exception:
             return base_outdir
+
 
     def choose_outdir(self):
         """Choisit le dossier de sortie (sans rajouter de sous-dossier automatique)."""
@@ -1359,6 +1365,7 @@ class App(tk.Tk):
         url_outdir = outdir
 
         if platform == "youtube" and dl_mode == DL_MODE_PLAYLIST:
+            self.log("📁 Préparation du dossier de playlist…")
             url_outdir = self._ensure_playlist_subdir(outdir, url)
 
         outtmpl = os.path.join(url_outdir, "%(title).200s [%(id)s].%(ext)s")
@@ -1490,6 +1497,10 @@ class App(tk.Tk):
 
             def hook(d):
                 nonlocal downloaded_path
+                # 🔥 IMPORTANT : récupérer le chemin dès "downloading"
+                fn = d.get("filename") or d.get("tmpfilename") or d.get("_filename")
+                if fn:
+                    downloaded_path = os.path.normpath(fn)
                 # Annulation utilisateur
                 if getattr(self, 'stop_flag', None) is not None and self.stop_flag.is_set():
                     raise DownloadCancelled()
@@ -1605,10 +1616,11 @@ class App(tk.Tk):
 
             # Robustesse réseau (timeouts/retries)
             cmd += [
-                "--socket-timeout", "60",
-                "--retries", "10",
-                "--fragment-retries", "10",
+                "--socket-timeout", "300",
+                "--retries", "20",
+                "--fragment-retries", "50",
                 "--concurrent-fragments", "1",
+                "--retry-sleep", "1",             # petite pause entre retries (évite boucle folle)
 
                 # Nettoyage fragments HLS/DASH (Twitch) :
                 "--no-keep-fragments",

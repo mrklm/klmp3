@@ -7,7 +7,15 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 [2.6.2] – 2026-01-19
 
+Ajouté
+
  - Ajout onglet aide
+
+Modifié
+
+ - Nommage des répertoires 
+ - Chemins pour les répertoires
+ - maj Aide + Section pour les geeks à la fin
 
 ---
 
