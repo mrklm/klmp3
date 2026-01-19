@@ -30,6 +30,8 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from ffmpeg_locator import find_ffmpeg_tools_first
 from tab_tags import TagsTab
+from tab_help import HelpTab
+
 
 from PIL import Image, ImageTk
 
@@ -388,7 +390,7 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLMP3 - v2.6.1")
+        self.title("KLMP3 - v2.6.2")
         self.geometry("820x620")
         self.minsize(780, 560)
 
@@ -508,13 +510,19 @@ class App(tk.Tk):
         self.tab_general = ttk.Frame(self.nb)
         self.tab_options = ttk.Frame(self.nb)
         self.tab_tags = ttk.Frame(self.nb)
+        self.tab_help = ttk.Frame(self.nb)
 
         self.nb.add(self.tab_general, text="Général")
         self.nb.add(self.tab_options, text="Options")
         self.nb.add(self.tab_tags, text="Métadonnées")
+        self.nb.add(self.tab_help, text="Aide")
 
         # Construit l'onglet Tags (UI + logique) depuis le module séparé
         self.tags_tab = TagsTab(parent=self.tab_tags, app=self)
+
+        # Construit l'onglet Aide (affiche AIDE.md)
+        self.help_tab = HelpTab(parent=self.tab_help, md_filename=os.path.join("assets", "AIDE.md"))
+        self.help_tab.pack(fill="both", expand=True)
 
         # ---- Contenu onglet Général ----
 

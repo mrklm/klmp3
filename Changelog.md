@@ -5,6 +5,12 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.6.2] – 2026-01-19
+
+ - Ajout onglet aide
+
+---
+
 [2.6.1] – 2026-01-19
 
 Modifié
