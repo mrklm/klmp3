@@ -244,7 +244,7 @@ KLmp3 :
 
 🧭 Comment on fait ?
 
-1. Cocher **Appliquer la couverture**
+1. Cocher Appliquer la couverture
 
 2. Choisir une image (JPG / PNG)
 
@@ -284,19 +284,31 @@ KLmp3 :
 
 ✨ KLmp3 s’occupe de la technique, vous profitez du son. ✨
 
+
+
 ---
+
+
+
 
 🎶 Bonne extraction & Bonne écoute 🎶
 
 
+
+
+
 ---
 
-🔩  🗜️  🪛  🔧  🔬  Plus pour les geeks:  📏  🔗  ⚗️  🪏  🪓  
-
-🔎 mais qu’est-ce que quoi comment ? 🔍️
 
 
-🕯️ Sous le capot de KLMP3 : mais qui fait quoi exactement ? 📋️
+
+
+🔩  🗜️  🪛  🔧  🔬  Bonus pour les Geeks:  📏  🔗  ⚗️  🪏  🪓  
+
+🔎 mais alors qu’est-ce que quoi comment ? 🔍️
+
+
+🕯️ Sous le capot de KLMP3 : mais qui fait quoi donc ? 📋️
 
 
 🐍 yt-dlp — le cerveau explorateur 🧭
@@ -322,7 +334,8 @@ soit comme module Python (yt_dlp) 🐍 → mode recommandé
 soit comme binaire externe (secours) 🧰
 
 💡 yt-dlp ne convertit pas vraiment l’audio :
-il télécharge la meilleure source disponible, souvent en .webm, .m4a, .mp4, etc.
+
+il télécharge la meilleure source disponible.
 
 
 ---
@@ -331,7 +344,8 @@ il télécharge la meilleure source disponible, souvent en .webm, .m4a, .mp4, et
 🎞️ ffmpeg — l’alchimiste audio 🔥
 
 ffmpeg, c’est le couteau suisse multimédia ultime.
-Un outil légendaire, capable de transformer presque n’importe quoi en presque n’importe quoi.
+
+Un outil capable de transformer presque n’importe quoi en presque n’importe quoi.
 
 👉 Son rôle dans KLMP3 :
 
@@ -378,6 +392,7 @@ savoir si certains encodeurs sont présents
 adapter automatiquement le comportement (ex : AAC sur macOS)
 
 🧠 ffprobe ne modifie rien.
+
 Il observe. Il juge. Il rapporte.
 
 
@@ -387,6 +402,7 @@ Il observe. Il juge. Il rapporte.
 🦕 Deno — le solveur de casse-têtes JavaScript 🧩
 
 Depuis quelques temps, YouTube adore compliquer la vie des téléchargeurs 😈
+
 Certaines vidéos nécessitent désormais :
 
 🧠 l’exécution de JavaScript dynamique
@@ -439,13 +455,7 @@ Avantages de l’embarqué :
 
 🎯 moins de “ça marche chez moi”
 
-C’est pour ça que:
-
-tools/
- └─ linux-x86_64/
-    ├─ ffmpeg
-    ├─ ffprobe
-    └─ deno
+---
 
 🧠 En résumé: 
 
