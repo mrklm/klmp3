@@ -483,7 +483,7 @@ class TagsTab:
                     cmd += ["-i", cover_tmp]
                     cmd += ["-map", "0:a:0", "-map", "1:v:0", "-c:a", "copy", "-c:v", "mjpeg", "-disposition:v:0", "attached_pic"]
                 else:
-                    cmd += ["-map", "0", "-c", "copy"]
+                    cmd += ["-map", "0:a", "-c", "copy"]
 
                 if enable_tags:
                     if plan.title:

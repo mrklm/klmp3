@@ -5,6 +5,31 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.6.1] – 2026-01-19
+
+Modifié
+
+ - Nettoyages des fichiers trnasitoires de Twitch
+ - Nettoyages des fichiers temporaires en cas d'annulation utilisateur
+ - message journal plus beaux
+
+---
+
+[2.6] – 2026-01-19
+
+Ajouté
+
+ - Onglet Métadonnées permet l'edition des"tags" et l'ajout d'images aux fichiers
+ - Onglet Métadonnées créé dans un fichier à part : tab_tags.py
+ - Possibilité de choisir plusieurs fichiers d'un coup
+ - Permet de choisir le répertoire de déstination
+
+ Modifié
+
+  - Modification de la couleur des étiquettes des onglets: accentuation de la couleur de l'onglet séléctionné
+
+---
+
 [2.5.2] – 2026-01-19
 
 Modifié

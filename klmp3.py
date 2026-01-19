@@ -298,15 +298,53 @@ def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event) -> int:
 def default_outdir() -> str:
     """Dossier de sortie par défaut.
 
-    Souhait : **un seul dossier daté sur le Bureau** (pas de AA/MM/JJ imbriqués).
-    Exemple : ~/Desktop/klmp3-25-01-16
+    Souhait : **un seul dossier daté sur le Bureau**.
+    Exemple : ~/Bureau/klmp3-25-01-16 (Linux FR) ou ~/Desktop/... (EN/macOS).
     """
-    desktop = os.path.join(os.path.expanduser("~"), "Desktop")
-    # macOS FR garde "Desktop" (Bureau = libellé Finder), mais on garde un fallback.
-    if not os.path.isdir(desktop):
-        desktop = os.path.expanduser("~")
+    home = os.path.expanduser("~")
+    desktop = None
+
+    # --- Linux : utiliser XDG (répertoire Bureau réel) ---
+    if not sys.platform.startswith("win") and sys.platform != "darwin":
+        # 1) xdg-user-dir (le plus fiable)
+        try:
+            p = subprocess.check_output(["xdg-user-dir", "DESKTOP"], text=True).strip()
+            if p and os.path.isdir(p):
+                desktop = p
+        except Exception:
+            pass
+
+        # 2) ~/.config/user-dirs.dirs (fallback)
+        if not desktop:
+            try:
+                cfg = os.path.join(home, ".config", "user-dirs.dirs")
+                if os.path.isfile(cfg):
+                    with open(cfg, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if line.startswith("XDG_DESKTOP_DIR="):
+                                v = line.split("=", 1)[1].strip().strip('"')
+                                v = v.replace("$HOME", home)
+                                if os.path.isdir(v):
+                                    desktop = v
+                                break
+            except Exception:
+                pass
+
+        # 3) derniers fallbacks “classiques”
+        if not desktop:
+            for cand in (os.path.join(home, "Desktop"), os.path.join(home, "Bureau")):
+                if os.path.isdir(cand):
+                    desktop = cand
+
+    # --- macOS / Windows / fallback général ---
+    if not desktop:
+        cand = os.path.join(home, "Desktop")
+        desktop = cand if os.path.isdir(cand) else home
+
     stamp = datetime.now().strftime("%y-%m-%d")
     return os.path.join(desktop, f"klmp3-{stamp}")
+
 
 
 def _config_dir() -> str:
@@ -350,7 +388,7 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLMP3 - v2.5.1")
+        self.title("KLMP3 - v2.6.1")
         self.geometry("820x620")
         self.minsize(780, 560)
 
@@ -363,7 +401,11 @@ class App(tk.Tk):
         # State
         self.worker_thread: threading.Thread | None = None
         self.stop_flag = threading.Event()
-        self.run_subprocess = run_subprocess
+        
+        # --- Thread-safe UI log ---
+        self._log_queue: list[str] = []
+        self._log_flush_scheduled = False
+
 
 
         # URL queue (up to 10 entries)
@@ -377,7 +419,7 @@ class App(tk.Tk):
         self.download_mode_var = tk.StringVar(value=DL_MODE_SINGLE)
         self.playlist_limit_enabled_var = tk.BooleanVar(value=False)
         self.playlist_limit_n_var = tk.IntVar(value=50)
-# UI vars
+        # UI vars
         self.outdir_var = tk.StringVar(value=default_outdir())
 
         # Config persistée (config.json dans dossier utilisateur)
@@ -767,9 +809,20 @@ class App(tk.Tk):
     # -------------- Theme system --------------
 
     def _on_theme_change(self, _event=None):
+        # Empêche de changer le thème pendant un traitement (Tk/ttk peut segfault)
+        if self.worker_thread and self.worker_thread.is_alive():
+            self.log("⚠️ Changement de thème désactivé pendant un téléchargement.")
+            # Remet la combobox sur le thème courant (sinon l'UI affiche un choix non appliqué)
+            try:
+                self.theme_var.set(self.current_theme_name)
+            except Exception:
+                pass
+            return
+
         name = self.theme_var.get().strip()
         if name in THEMES:
             self.apply_theme(name)
+
 
     def apply_theme(self, theme_name: str):
         theme = THEMES.get(theme_name)
@@ -1090,10 +1143,44 @@ class App(tk.Tk):
 
 
     def log(self, msg: str):
-        self.txt.configure(state="normal")
-        self.txt.insert("end", msg + "\n")
-        self.txt.see("end")
-        self.txt.configure(state="disabled")
+        """Thread-safe: le worker peut appeler log() sans toucher Tk directement."""
+        if msg is None:
+            return
+        s = str(msg)
+
+        # Si on est dans le thread UI: write direct
+        if threading.current_thread() is threading.main_thread():
+            self._log_ui(s)
+            return
+
+        # Sinon: on queue et on schedule un flush dans le thread UI
+        self._log_queue.append(s)
+        if not self._log_flush_scheduled:
+            self._log_flush_scheduled = True
+            try:
+                self.after(0, self._flush_log_queue)
+            except Exception:
+                pass
+
+    def _log_ui(self, s: str):
+        try:
+            self.txt.configure(state="normal")
+            self.txt.insert("end", s + "\n")
+            self.txt.see("end")
+            self.txt.configure(state="disabled")
+        except Exception:
+            # fenêtre peut être fermée
+            pass
+
+    def _flush_log_queue(self):
+        self._log_flush_scheduled = False
+        if not self._log_queue:
+            return
+        batch = self._log_queue[:]
+        self._log_queue.clear()
+        for s in batch:
+            self._log_ui(s)
+
 
     def _check_tools(self):
         missing = []
@@ -1210,8 +1297,8 @@ class App(tk.Tk):
         )
         self.worker_thread.start()
     def stop(self):
-            self.stop_flag.set()
-            self.log("⏹️ Arrêt demandé… (le processus va s’interrompre)")
+        self.stop_flag.set()
+        self.log("⏹️ Arrêt demandé… (le processus va s’interrompre)")
 
     def _finish(self, ok: bool, msg: str):
         self.progress.stop()
@@ -1268,7 +1355,15 @@ class App(tk.Tk):
 
         outtmpl = os.path.join(url_outdir, "%(title).200s [%(id)s].%(ext)s")
 
-        ok, downloaded = self._download_audio(url, outtmpl, platform=platform, dl_mode=dl_mode, limit_on=limit_on, limit_n=limit_n)
+        ok, downloaded = self._download_audio(
+            url, outtmpl,
+            platform=platform,
+            dl_mode=dl_mode,
+            limit_on=limit_on,
+            limit_n=limit_n,
+            keep_inter=keep_inter,
+        )
+
         if not ok:
             return False, downloaded
 
@@ -1277,22 +1372,63 @@ class App(tk.Tk):
 
         converted = 0
         for downloaded_path in downloaded_paths:
+            # Annulation utilisateur : avant conversion, on nettoie l'intermédiaire courant
+            if self.stop_flag.is_set():
+                self.log("⏹️ Annulation demandée — nettoyage en cours…")
+                self._cleanup_partials_for(downloaded_path, platform)
+                return False, "⏹️ Annulé par l’utilisateur\n🧹 Fichiers temporaires nettoyés"
+
             self.log(f"📦 Intermédiaire : {downloaded_path}")
 
             ok2, msg_or_final = self._convert_audio(downloaded_path, fmt)
             if not ok2:
-                return False, msg_or_final
+                # Si l'utilisateur a annulé pendant ffmpeg, on nettoie tout de suite
+                if self.stop_flag.is_set():
+                    self.log("🧹 Annulation pendant conversion — nettoyage…")
+                    self._cleanup_partials_for(downloaded_path, platform)
+                return False, "⏹️ Annulé par l’utilisateur\n🧹 Fichiers temporaires nettoyés"
+
 
             final_path = msg_or_final
             self.log(f"🎧 Sortie : {final_path}")
             converted += 1
 
+
             if not keep_inter:
                 self._safe_remove(downloaded_path)
 
-        return True, f"OK ({converted} fichier(s) converti(s))"
+            # Nettoyage des fragments HLS restants (Twitch laisse parfois des .part-FragXXX.part)
+            if platform == "twitch" and not keep_inter:
+                try:
+                    folder = os.path.dirname(downloaded_path)
+                    base = os.path.basename(downloaded_path)
 
-    def _download_audio(self, url: str, outtmpl: str, platform: str, dl_mode: str, limit_on: bool, limit_n: int):
+                    # Deux styles vus selon versions/backends:
+                    # - "<base>.part-Frag123.part"
+                    # - "<base>-Frag123"
+                    prefix_a = base + ".part-Frag"
+                    prefix_b = base + "-Frag"
+
+                    for name in os.listdir(folder):
+                        if name.startswith(prefix_a) or name.startswith(prefix_b):
+                            self._safe_remove(os.path.join(folder, name))
+                except Exception:
+                    pass
+    
+
+        # Résumé lisible de fin
+        folder = os.path.dirname(final_path) if converted else ""
+        msg_lines = [
+            "✅ Conversion terminée",
+            f"🎧 {converted} fichier{'s' if converted > 1 else ''} converti{'s' if converted > 1 else ''}",
+        ]
+        if folder:
+            msg_lines.append(f"📁 Dossier : {folder}")
+
+        return True, "\n".join(msg_lines)
+
+    def _download_audio(self, url: str, outtmpl: str, platform: str, dl_mode: str, limit_on: bool, limit_n: int, keep_inter: bool):
+
         """
         Retourne (ok, path_ou_message).
         """
@@ -1394,6 +1530,16 @@ class App(tk.Tk):
                 "logger": _YDLLogger(self.log),
             }
 
+            # Nettoyage des fragments (.part-Frag...) : on ne garde PAS ces temporaires.
+            # La checkbox "Conserver le fichier intermédiaire" concerne le fichier final téléchargé (mp4/webm),
+            # pas les fragments HLS.
+            ydl_opts["keep_fragments"] = False
+
+            # Optionnel : évite le fichier principal .part (moins de bazar, mais empêche la reprise)
+            # On le met seulement si on ne debug pas.
+            if not keep_inter:
+                ydl_opts["nopart"] = True
+
 
             # Playlist : limite éventuelle
             if dl_mode == DL_MODE_PLAYLIST and limit_on:
@@ -1426,7 +1572,8 @@ class App(tk.Tk):
                 if rc != 0:
                     return False, f"yt-dlp (module) a échoué (code {rc})."
             except DownloadCancelled:
-                return False, "Arrêté par l’utilisateur."
+                self._cleanup_partials_for(downloaded_path, platform)
+                return False, "⏹️ Annulé par l’utilisateur\n🧹 Fichiers temporaires nettoyés"
             except Exception as e:
                 return False, f"yt-dlp (module) a échoué : {e}"
 
@@ -1447,6 +1594,23 @@ class App(tk.Tk):
                 '--newline',
                 '--no-warnings',
             ]
+
+            # Robustesse réseau (timeouts/retries)
+            cmd += [
+                "--socket-timeout", "60",
+                "--retries", "10",
+                "--fragment-retries", "10",
+                "--concurrent-fragments", "1",
+
+                # Nettoyage fragments HLS/DASH (Twitch) :
+                "--no-keep-fragments",
+            ]
+
+            # Optionnel : évite le .part principal (mais empêche la reprise). On l'active hors debug.
+            if not keep_inter:
+                cmd += ["--no-part"]
+
+
             # Respect du mode choisi (single vs playlist)
             if dl_mode == DL_MODE_PLAYLIST:
                 cmd += ["--yes-playlist"]
@@ -1463,6 +1627,9 @@ class App(tk.Tk):
             if ("youtube.com" in url) or ("youtu.be" in url):
                 cmd += ["--cookies-from-browser", "firefox"]
                 self.log("🍪 Cookies YouTube : lecture depuis le navigateur (Firefox)")
+                # Workaround SABR : changer de client
+                cmd += ["--extractor-args", "youtube:player_client=tv_embedded"]
+
 
             if getattr(self, "deno_path", None):
                 cmd += ["--js-runtimes", f"deno:{self.deno_path}", "--remote-components", "ejs:github"]
@@ -1480,7 +1647,8 @@ class App(tk.Tk):
 
             rc = run_subprocess(cmd, on_line, self.stop_flag)
             if rc == 130:
-                return False, "Arrêté par l’utilisateur."
+                self._cleanup_partials_for(downloaded_path, platform)
+                return False, "⏹️ Annulé par l’utilisateur\n🧹 Fichiers temporaires nettoyés"
             if rc != 0:
                 return False, f"yt-dlp a échoué (code {rc})."
 
@@ -1591,10 +1759,15 @@ class App(tk.Tk):
         if rc == 0 and os.path.isfile(out_path):
             return True, out_path
         if rc == 130:
-            return False, "Arrêté par l’utilisateur."
+            return False, "⏹️ Arrêté par l’utilisateur."
+
         return False, f"ffmpeg a échoué (code {rc})."
 
     def _safe_remove(self, path: str):
+        # Rien à faire si le fichier n'existe déjà plus
+        if not path or not os.path.exists(path):
+            return
+            
         # Windows peut garder le fichier verrouillé très brièvement après ffmpeg.
         for attempt in range(1, 6):  # 5 essais
             try:
@@ -1606,6 +1779,34 @@ class App(tk.Tk):
                     self.log(f"⚠️ Intermédiaire NON supprimé : {path} ({e})")
                     return
                 time.sleep(0.2)
+
+    def _cleanup_partials_for(self, downloaded_path: str | None, platform: str):
+        """Supprime fichiers partiels laissés après une annulation utilisateur."""
+        if not downloaded_path:
+            return
+        try:
+            folder = os.path.dirname(downloaded_path)
+            base = os.path.basename(downloaded_path)
+
+            # fichier principal/intermédiaire
+            self._safe_remove(downloaded_path)
+
+            # variante .part
+            part_path = os.path.join(folder, base + ".part")
+            if os.path.exists(part_path):
+                self._safe_remove(part_path)
+
+            # fragments HLS (twitch surtout) : 2 styles possibles
+            prefix_a = base + ".part-Frag"
+            prefix_b = base + "-Frag"
+
+            for name in os.listdir(folder):
+                if name.startswith(prefix_a) or name.startswith(prefix_b):
+                    self._safe_remove(os.path.join(folder, name))
+        except Exception:
+            pass
+
+
 
 
 if __name__ == "__main__":
