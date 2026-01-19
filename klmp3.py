@@ -29,7 +29,7 @@ import time
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from ffmpeg_locator import find_ffmpeg_tools_first
-
+from tab_tags import TagsTab
 
 from PIL import Image, ImageTk
 
@@ -363,6 +363,8 @@ class App(tk.Tk):
         # State
         self.worker_thread: threading.Thread | None = None
         self.stop_flag = threading.Event()
+        self.run_subprocess = run_subprocess
+
 
         # URL queue (up to 10 entries)
         self.url_vars: list[tk.StringVar] = [tk.StringVar()]
@@ -463,9 +465,14 @@ class App(tk.Tk):
 
         self.tab_general = ttk.Frame(self.nb)
         self.tab_options = ttk.Frame(self.nb)
+        self.tab_tags = ttk.Frame(self.nb)
 
         self.nb.add(self.tab_general, text="Général")
         self.nb.add(self.tab_options, text="Options")
+        self.nb.add(self.tab_tags, text="Métadonnées")
+
+        # Construit l'onglet Tags (UI + logique) depuis le module séparé
+        self.tags_tab = TagsTab(parent=self.tab_tags, app=self)
 
         # ---- Contenu onglet Général ----
 
@@ -792,14 +799,30 @@ class App(tk.Tk):
 
         try:
             self.style.configure("TNotebook", background=BG, borderwidth=0)
-            self.style.configure("TNotebook.Tab", background=PANEL, foreground=FG, padding=(10, 6))
+
+            # Base = onglets inactifs (neutres)
+            self.style.configure(
+                "TNotebook.Tab",
+                background=BG,          # inactif = fond de l'app
+                foreground=FG,
+                padding=(10, 6)
+            )
+
+            # Map = onglet actif coloré (accent)
             self.style.map(
                 "TNotebook.Tab",
-                background=[("selected", BG)],
-                foreground=[("selected", FG)]
+                background=[
+                    ("selected", ACCENT),
+                    ("!selected", BG),
+                ],
+                foreground=[
+                    ("selected", PANEL),      # texte sur accent (lisible en général)
+                    ("!selected", FG),
+                ],
             )
         except Exception:
             pass
+
 
     # -------------- Format UI ----------------
 
