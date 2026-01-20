@@ -18,11 +18,11 @@ d’extraire le son de contenus en ligne
 
 🎯 YouTube & Twitch 💾
 
-👉 Vous fournissez une URL 
+📌 Vous fournissez une URL 
 
-👉 KLmp3 fait le travail technique 
+🪠 KLmp3 fait le travail technique 
 
-👉 Vous récupérez un fichier audio prêt à l’écoute 🎶
+🔊 Vous récupérez un fichier audio prêt à l’écoute 🎶
 
 ---
 
@@ -34,7 +34,7 @@ d’extraire le son de contenus en ligne
 
 3. KLmp3 télécharge le meilleur flux audio disponible 🪠
 
-4. KLmp3 convertit vers le format choisi si nécessaire ⚙️
+4. KLmp3 convertit vers le format choisi dans options (mp3 par defaut) ⚙️
 
 5. Vous obtenez un fichier audio final 📦️
 
@@ -45,15 +45,6 @@ d’extraire le son de contenus en ligne
 🎯 Qu’est-ce qu’on veut ?
 
 👉 Extraire le son d’un seul contenu
-
-👉 On veut :
-
-- un fichier audio propre
-
-- compatible avec tous les lecteurs
-
-- sans manipulation technique compliquée
-
 
 🧭 Comment on fait ?
 
@@ -68,29 +59,11 @@ d’extraire le son de contenus en ligne
 
 ---
 
- 📂 Extraire le son d’une playlist
+🎯 Qu’est-ce qu’on veut ?
 
- 🎯 Qu’est-ce qu’on veut ?
+📂 Extraire le son d’une playlist
 
-👉 Extraire le son de plusieurs contenus à la suite
-
-Exemples :
-
-- playlist musicale 🎵
-
-- série d’émissions 🎙️
-
-- conférences ou cours 🎓
-
- 👉 On veut :
-
-- un fichier audio par élément
-
-- un traitement automatique
-
-- la possibilité de limiter le nombre d’éléments
-
- 🧭 Comment on fait ?
+🧭 Comment on fait ?
 
 1. Coller l’URL d’une playlist
 
@@ -99,46 +72,37 @@ Exemples :
 3. (Optionnel) définir une limite
 
 4. ▶️ Démarrer
-
+   
 Chaque élément est :
 
-- téléchargé séparément
+- téléchargé séparément 🔼
 
-- converti individuellement
+- converti individuellement ⚙️
 
 - annulable à tout moment ⛔
 
----
+- Mis dans un repertoire au nom de la playlist 📂
 
- 🎼 Choisir le format audio
+---
 
  🎯 Qu’est-ce qu’on veut ?
 
 👉 Choisir le format audio de sortie
 
- 👉 On veut :
+ 🎧 Formats audio disponibles dans l'onglet options :
 
-- un format adapté à l’usage
+--> MP3 → universel, compatible partout 🌍
 
-- un bon équilibre qualité / taille
+--> M4A / AAC → excellente qualité, fichiers légers ✨
 
-- une compatibilité maximale
+--> OPUS → très haute qualité à débit réduit 🚀
 
+--> OGG → format libre et efficace 🟢
 
- 🎧 Formats audio disponibles
-Selon la plateforme et les options :
+--> FLAC → qualité maximale, sans perte 💎
 
-- MP3 → universel, compatible partout 🌍
+--> WAV → audio brut, non compressé 🎚️
 
-- M4A / AAC → excellente qualité, fichiers légers ✨
-
-- OPUS → très haute qualité à débit réduit 🚀
-
-- OGG → format libre et efficace 🟢
-
-- FLAC → qualité maximale, sans perte 💎
-
-- WAV → audio brut, non compressé 🎚️
 
 KLmp3 sélectionne automatiquement le meilleur flux audio disponible 
 
@@ -146,61 +110,18 @@ puis effectue la conversion vers le format choisi 🔄
 
 ---
 
- ⛔ Annuler une action en cours
 
- 🎯 Qu’est-ce qu’on veut ?
+🧪 Conserver les fichiers intermédiaires (debug) 🧪
 
-👉 Pouvoir interrompre une action sans risque
+⚠️ Option recommandée uniquement pour le debug ⚠️ 
 
-👉 On veut :
-
-- arrêter un téléchargement
-
-- arrêter une conversion
-
-- ne laisser aucun fichier corrompu
-
- 🧭 Comment on fait ?
-
-- Cliquer sur ⏹️ Stop
-
-KLmp3 :
-
-- interrompt proprement l’opération
-
-- supprime les fichiers partiels 🧹
-
-- nettoie automatiquement les fragments laissés par Twitch
+🚫 En usage normal, laissez cette option désactivée 🚫
 
 ---
 
- 🧪 Conserver les fichiers intermédiaires (debug)
+🏷️ Métadonnées audio (tags) 🏷️
 
- 🎯 Qu’est-ce qu’on veut ?
-
-👉 Comprendre ou diagnostiquer le fonctionnement interne
-
- 👉 On veut :
-
-- conserver les fichiers temporaires
-
-- analyser les étapes intermédiaires
-
-- faciliter le dépannage
-
- 🧭 Comment on fait ?
-
-- Cocher Conserver les fichiers intermédiaires
-
-⚠️ Option recommandée uniquement pour le debug  
-
-En usage normal, laissez cette option désactivée ✅
-
----
-
-🏷️ Métadonnées audio (tags)
-
-> 💡 Cette partie concerne les fichiers audio existants
+💡 Cette partie concerne les fichiers audio existants 💡
 
 ---
 
@@ -218,8 +139,6 @@ En usage normal, laissez cette option désactivée ✅
 
 - une année 📅
 
-- une pochette intégrée 🖼️
-
 ---
 
 🧭 Comment on fait ?
@@ -232,19 +151,11 @@ En usage normal, laissez cette option désactivée ✅
 
 4. Cliquer sur ✅ Appliquer
 
-KLmp3 :
-
-- ne ré-encode pas l’audio 🎯
-
-- conserve la qualité d’origine
-
-- effectue une copie propre du fichier
-
 ---
 
-🖼️ Ajouter ou changer une pochette
-
 🎯 Qu’est-ce qu’on veut ?
+
+🖼️ Ajouter ou changer une pochette
 
 👉 Intégrer une image de couverture dans le fichier audio
 
@@ -290,9 +201,13 @@ KLmp3 :
 
 ✨ KLmp3 s’occupe de la technique, vous profitez du son. ✨
 
-
-
 ---
+
+
+
+
+
+
 
 
 
@@ -307,13 +222,14 @@ KLmp3 :
 
 
 
+
+
+
+
+
 ---
 
-
-
-
-
-🔩  🗜️  🪛  🔧  🔬  Bonus pour les Geeks:  📏  🔗  ⚗️  🪏  🪓  
+🔩  🗜️  🪛  🔧  🔬  Bonus pour les Geeks:  📏  🔗  ⚗️  🔨  🪓  
 
 🔎 mais alors qu’est-ce que quoi comment ? 🔍️
 
@@ -323,7 +239,7 @@ KLmp3 :
 
 🐍 yt-dlp — le cerveau explorateur 🧭
 
-yt-dlp est le descendant moderne et survitaminé de youtube-dl.
+yt-dlp est le descendant moderne de youtube-dl.
 
 👉 Son rôle :
 
@@ -336,6 +252,7 @@ yt-dlp est le descendant moderne et survitaminé de youtube-dl.
 🍪 gérer les cookies (vidéos privées, age-restricted, etc.)
 
 📜 gérer playlists, VODs, formats multiples…
+
 
 Dans KLMP3, yt-dlp est utilisé :
 
@@ -357,6 +274,7 @@ ffmpeg, c’est le couteau suisse multimédia ultime.
 
 Un outil capable de transformer presque n’importe quoi en presque n’importe quoi.
 
+
 👉 Son rôle dans KLmp3 :
 
 🎧 convertir l’audio téléchargé vers le format choisi :
@@ -366,6 +284,7 @@ MP3 / M4A (AAC) / OPUS / FLAC / OGG / WAV
 🎚️ appliquer les réglages de qualité / bitrate
 
 ✂️ extraire uniquement la piste audio (pas de vidéo)
+
 
 Exemples :
 
@@ -395,6 +314,7 @@ ffprobe est le petit frère silencieux de ffmpeg.
 
 🧪 vérifier ce que ffmpeg sait (encodeurs disponibles)
 
+
 Dans KLmp3, il sert notamment à :
 
 savoir si certains encodeurs sont présents
@@ -420,6 +340,7 @@ Certaines vidéos nécessitent désormais :
 🛡️ des JS challenges (EJS)
 
 👉 Deno est un runtime JavaScript moderne (alternatif à Node.js), sécurisé et autonome.
+
 
 Dans KLmp3 :
 
@@ -477,4 +398,10 @@ Avantages de l’embarqué :
 
 🦕 Deno → aide yt-dlp à passer les pièges JavaScript
 
-📦 KLmp3 → orchestre tout ça proprement.💙
+
+
+💙  KLmp3  💙
+
+
+🔊  🎵  🎚️  🎻  📀  🎷  💙  📦  💙  🎺  💽  🎸  🎚️  🎶  📢
+
