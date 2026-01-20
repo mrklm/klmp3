@@ -5,7 +5,7 @@
 
 ## 🔈️ KLmp3 📢
 
-Extracteur audio YouTube / Twitch simple et multi-OS, écrit en Python + Tkinter.
+Extracteur audio You#ube / Twi#ch simple et multi-OS, écrit en Python + Tkinter.
 Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV) sans dépendre d’un environnement exotique.
 
 ---
