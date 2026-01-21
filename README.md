@@ -10,7 +10,7 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 
 ---
 
-## 👓️ Aperçu
+## 👁️ Aperçu
 
 ![Fenêtre options](screenshots/KLmp3.png)
 ![Fenêtre general](screenshots/general.png)
@@ -21,9 +21,6 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 ---
 
 ## 📥 Téléchargement
-
-👉 Les versions compilées sont disponibles ici :  
-🔗 [GitHub Releases – KLmp3](https://github.com/mrklm/klmp3/releases)
 
 ## 💾 Applications standalone (recommandé)
 
@@ -134,7 +131,7 @@ Aucun accès réseau autre que celui de yt-dlp
 
 Le programme ne modifie pas le PATH système
 
-Fonctionne sous macOS / Linux / Windows
+Fonctionne sous  Linux / macOS / Windows
 
 ---
 
@@ -151,6 +148,10 @@ Les contributions sont les bienvenues via Pull Requests.
 ---
 
 ## ⚠️ Avertissement
+
+L'utilisation des audios extraits de Youtube & Twist est
+résérvé à un usage **strictement personnel** il ne doit en
+aucun cas être diffusé ou partagé.
 
 Ce logiciel est fourni **sans garantie**. L'auteur décline 
 toute responsabilité en cas de dommage ou de dysfonctionnement.
