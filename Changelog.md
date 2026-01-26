@@ -5,6 +5,18 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.7] – 2026-01-26
+
+Modifié
+
+ - Systeme anticolision de noms revu: plus de code ID type :"[HHF697HHGV]" en mode automatique mais
+   à la place une numérotation type "(02),(03)..." seulement en cas de doublons.
+   
+ - Numerotation automatique des playlists (01 - ,02 - ...) si moins de 100 titres, et (001 - ,002 - ...)
+   pour plus de 100 titres et si le mode "playlist complète" est séléctionné
+
+ ---
+
 [2.6.4] – 2026-01-26
 
 Modifié
