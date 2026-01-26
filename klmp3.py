@@ -390,7 +390,7 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLMP3 - v2.6.2")
+        self.title("KLMP3 - v2.6.3")
         self.geometry("820x620")
         self.minsize(780, 560)
 

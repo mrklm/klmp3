@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import re
 import threading
 import tempfile
 import tkinter as tk
@@ -32,7 +33,7 @@ def _dedupe_outpath(outdir: str, filename: str) -> str:
     cand = os.path.join(outdir, filename)
     if not os.path.exists(cand):
         return cand
-    i = 1
+    i = 2
     while True:
         cand = os.path.join(outdir, f"{base} ({i}){ext}")
         if not os.path.exists(cand):
@@ -41,44 +42,41 @@ def _dedupe_outpath(outdir: str, filename: str) -> str:
 
 
 def _cover_supported_for(path: str) -> bool:
-    low = path.lower()
-    return low.endswith((".mp3", ".m4a", ".mp4", ".flac"))
+    p = path.lower()
+    return p.endswith(".mp3") or p.endswith(".m4a") or p.endswith(".mp4") or p.endswith(".flac")
 
 
-def _load_and_prepare_cover(cover_path: str, make_square: bool, max_size: int = 1000) -> str:
-    if not cover_path:
-        return ""
+def _extract_track_and_title_from_filename(path: str) -> tuple[str, str, str]:
+    """
+    Extrait (track, title_without_track, title_full) à partir du nom de fichier.
+    Exemples:
+      "01 - Ma chanson.mp3" -> ("1", "Ma chanson", "01 - Ma chanson")
+      "1.Ma chanson.mp3"    -> ("1", "Ma chanson", "1.Ma chanson")
+      "Ma chanson.mp3"      -> ("", "Ma chanson", "Ma chanson")
+    """
+    base = os.path.basename(path)
+    noext, _ext = os.path.splitext(base)
+    noext = noext.strip()
 
-    try:
-        from PIL import Image
-    except Exception:
-        return cover_path
+    # Pistes: chiffres au début + séparateur + reste
+    m = re.match(r"^\s*(\d{1,3})\s*[-._ ]+\s*(.+?)\s*$", noext)
+    if m:
+        track_raw = m.group(1)
+        title_wo = m.group(2).strip()
+        # Normaliser le numéro (01 -> 1)
+        try:
+            track = str(int(track_raw))
+        except Exception:
+            track = track_raw.lstrip("0") or track_raw
+        return track, title_wo or noext, noext
 
-    try:
-        img = Image.open(cover_path).convert("RGB")
-
-        if make_square:
-            w, h = img.size
-            side = min(w, h)
-            left = (w - side) // 2
-            top = (h - side) // 2
-            img = img.crop((left, top, left + side, top + side))
-
-        w, h = img.size
-        scale = min(max_size / w, max_size / h, 1.0)
-        if scale < 1.0:
-            img = img.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.LANCZOS)
-
-        fd, tmp = tempfile.mkstemp(prefix="klmp3_cover_", suffix=".jpg")
-        os.close(fd)
-        img.save(tmp, format="JPEG", quality=92)
-        return tmp
-    except Exception:
-        return cover_path
+    # Pas de préfixe piste
+    return "", noext, noext
 
 
 @dataclass
 class _TagPlan:
+    track: str
     title: str
     artist: str
     album: str
@@ -91,7 +89,7 @@ class TagsTab:
     Onglet "Métadonnées" (ffmpeg-only)
     - multi-sélection fichiers (Ctrl/Maj)
     - dossier de sortie par défaut : <dossier_entree>-tag
-    - tags: title/artist/album/date/genre
+    - tags: track/title/artist/album/date/genre
     - cover: MP3/M4A/FLAC
     """
 
@@ -112,18 +110,31 @@ class TagsTab:
         self.enable_cover_var = tk.BooleanVar(value=False)
         self.square_cover_var = tk.BooleanVar(value=True)
 
+        # ✅ Nouveaux comportements "depuis le nom de fichier"
+        self.track_from_filename_var = tk.BooleanVar(value=True)
+        self.title_from_filename_var = tk.BooleanVar(value=True)
+
+        # Champs
+        self.track_var = tk.StringVar(value="")
         self.title_var = tk.StringVar(value="")
         self.artist_var = tk.StringVar(value="")
         self.album_var = tk.StringVar(value="")
         self.year_var = tk.StringVar(value="")
         self.genre_var = tk.StringVar(value="")
 
+        # Widgets à contrôler (enable/disable)
+        self.ent_track: ttk.Entry | None = None
+        self.ent_title: ttk.Entry | None = None
+
         self._build_ui()
         self._bind_apply_state()
+        self._bind_field_state()
+        self._update_title_track_state()
         self._update_apply_state()
 
-
-    # ---------------- UI ----------------
+    # ---------------
+    # UI
+    # ---------------
 
     def _build_ui(self):
         # Root
@@ -175,58 +186,64 @@ class TagsTab:
 
         frm_pick = ttk.LabelFrame(left, text="Sélection")
         frm_pick.grid(row=0, column=0, sticky="ew", pady=(0, 10))
-        frm_pick.columnconfigure(1, weight=1)
+        frm_pick.columnconfigure(0, weight=1)
 
-        ttk.Button(frm_pick, text="Ajouter fichiers…", command=self.pick_files).grid(row=0, column=0, padx=10, pady=(10, 6), sticky="w")
-        ttk.Label(frm_pick, text="Ctrl/Maj pour multi-sélection").grid(row=0, column=1, padx=(0, 10), pady=(10, 6), sticky="w")
+        pick_row = ttk.Frame(frm_pick)
+        pick_row.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+        pick_row.columnconfigure(0, weight=1)
 
-        ttk.Button(frm_pick, text="Effacer la sélection", command=self.clear_files).grid(row=1, column=0, padx=10, pady=(0, 10), sticky="w")
-        ttk.Label(frm_pick, textvariable=self.in_summary_var).grid(row=1, column=1, padx=(0, 10), pady=(0, 10), sticky="w")
+        ttk.Button(pick_row, text="Ajouter…", command=self.pick_files).grid(row=0, column=0, sticky="w")
+        ttk.Button(pick_row, text="Retirer", command=self.remove_selected).grid(row=0, column=1, sticky="w", padx=(8, 0))
+        ttk.Button(pick_row, text="Tout effacer", command=self.clear_files).grid(row=0, column=2, sticky="w", padx=(8, 0))
 
-        frm_list = ttk.LabelFrame(left, text="Fichiers (aperçu)")
-        frm_list.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        self.lbl_summary = ttk.Label(frm_pick, textvariable=self.in_summary_var)
+        self.lbl_summary.grid(row=1, column=0, sticky="w", padx=10, pady=(0, 10))
+
+        frm_list = ttk.Frame(left)
+        frm_list.grid(row=1, column=0, sticky="nsew")
+        left.rowconfigure(1, weight=1)
+
         frm_list.columnconfigure(0, weight=1)
+        frm_list.rowconfigure(0, weight=1)
 
-        # Aperçu réduit : hauteur plus faible
-        self.listbox = tk.Listbox(frm_list, height=5)
-        self.listbox.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+        self.lb = tk.Listbox(frm_list, selectmode="extended", height=10)
+        self.lb.grid(row=0, column=0, sticky="nsew")
 
+        ysb = ttk.Scrollbar(frm_list, orient="vertical", command=self.lb.yview)
+        ysb.grid(row=0, column=1, sticky="ns")
+        self.lb.configure(yscrollcommand=ysb.set)
+
+        # Sortie (en bas à gauche)
         frm_out = ttk.LabelFrame(left, text="Dossier de sortie")
-        frm_out.grid(row=2, column=0, sticky="ew")
+        frm_out.grid(row=2, column=0, sticky="ew", pady=(10, 0))
         frm_out.columnconfigure(0, weight=1)
 
-        ttk.Label(frm_out, text="Par défaut : un dossier “-tag” est créé à côté des fichiers.").grid(
-            row=0, column=0, columnspan=3, sticky="w", padx=10, pady=(8, 2)
+        out_row = ttk.Frame(frm_out)
+        out_row.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+        out_row.columnconfigure(0, weight=1)
+
+        ttk.Entry(out_row, textvariable=self.outdir_var).grid(row=0, column=0, sticky="ew")
+        ttk.Button(out_row, text="Choisir…", command=self.pick_outdir).grid(row=0, column=1, padx=(8, 0))
+
+        # -------- DROITE : Cover + Métadonnées --------
+
+        frm_cover = ttk.LabelFrame(right, text="Image de couverture")
+        frm_cover.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        frm_cover.columnconfigure(1, weight=1)
+
+        ttk.Checkbutton(frm_cover, text="Ajouter une couverture", variable=self.enable_cover_var).grid(
+            row=0, column=0, columnspan=2, sticky="w", padx=10, pady=(8, 6)
         )
 
-        ent_out = ttk.Entry(frm_out, textvariable=self.outdir_var)
-        ent_out.grid(row=1, column=0, sticky="ew", padx=10, pady=(4, 10))
+        ttk.Label(frm_cover, text="Fichier image :").grid(row=1, column=0, sticky="w", padx=10, pady=(0, 8))
+        ttk.Entry(frm_cover, textvariable=self.cover_path_var).grid(row=1, column=1, sticky="ew", padx=10, pady=(0, 8))
+        ttk.Button(frm_cover, text="Choisir…", command=self.pick_cover).grid(row=1, column=2, sticky="e", padx=(0, 10), pady=(0, 8))
 
-        ttk.Button(frm_out, text="Choisir…", command=self.choose_outdir).grid(
-            row=1, column=1, sticky="ew", padx=(0, 10), pady=(4, 10)
-        )
-        ttk.Button(frm_out, text="Réinitialiser défaut", command=self.reset_outdir_default).grid(
-            row=1, column=2, sticky="ew", padx=(0, 10), pady=(4, 10)
+        ttk.Checkbutton(frm_cover, text="Rogner carré (recommandé)", variable=self.square_cover_var).grid(
+            row=2, column=0, columnspan=3, sticky="w", padx=10, pady=(0, 10)
         )
 
-
-        # -------- DROITE : Couverture (haut) + Métadonnées --------
-
-        frm_cov = ttk.LabelFrame(right, text="Image de couverture")
-        frm_cov.grid(row=0, column=0, sticky="ew", pady=(0, 10))
-        frm_cov.columnconfigure(0, weight=1)
-
-        ttk.Checkbutton(frm_cov, text="Appliquer une couverture (MP3 / M4A / FLAC)", variable=self.enable_cover_var).grid(
-            row=0, column=0, columnspan=3, sticky="w", padx=10, pady=(8, 6)
-        )
-
-        ent_cov = ttk.Entry(frm_cov, textvariable=self.cover_path_var)
-        ent_cov.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
-
-        ttk.Button(frm_cov, text="Choisir image…", command=self.choose_cover).grid(row=1, column=1, sticky="ew", padx=(0, 10), pady=(0, 10))
-        ttk.Checkbutton(frm_cov, text="Carré (crop + resize)", variable=self.square_cover_var).grid(row=1, column=2, sticky="w", padx=(0, 10), pady=(0, 10))
-
-        frm_meta = ttk.LabelFrame(right, text="Métadonnées (audio)")
+        frm_meta = ttk.LabelFrame(right, text="Métadonnées")
         frm_meta.grid(row=1, column=0, sticky="ew")
         frm_meta.columnconfigure(1, weight=1)
 
@@ -234,19 +251,82 @@ class TagsTab:
             row=0, column=0, columnspan=2, sticky="w", padx=10, pady=(8, 6)
         )
 
-        self._grid_labeled_entry(frm_meta, "Titre", self.title_var, row=1)
-        self._grid_labeled_entry(frm_meta, "Artiste", self.artist_var, row=2)
-        self._grid_labeled_entry(frm_meta, "Album", self.album_var, row=3)
-        self._grid_labeled_entry(frm_meta, "Année", self.year_var, row=4)
-        self._grid_labeled_entry(frm_meta, "Genre", self.genre_var, row=5)
+        # ✅ Nouveau champ N° de piste
+        self.ent_track = self._grid_labeled_entry(frm_meta, "N° de piste", self.track_var, row=1)
+        ttk.Checkbutton(
+            frm_meta,
+            text="N° du fichier = N° de piste",
+            variable=self.track_from_filename_var,
+            command=self._update_title_track_state,
+        ).grid(row=2, column=0, columnspan=2, sticky="w", padx=26, pady=(0, 8))
+
+        # ✅ Champ Titre + option filename->title
+        self.ent_title = self._grid_labeled_entry(frm_meta, "Titre", self.title_var, row=3)
+        ttk.Checkbutton(
+            frm_meta,
+            text="Nom du fichier = titre",
+            variable=self.title_from_filename_var,
+            command=self._update_title_track_state,
+        ).grid(row=4, column=0, columnspan=2, sticky="w", padx=26, pady=(0, 8))
+
+        # Autres champs
+        self._grid_labeled_entry(frm_meta, "Artiste", self.artist_var, row=5)
+        self._grid_labeled_entry(frm_meta, "Album", self.album_var, row=6)
+        self._grid_labeled_entry(frm_meta, "Année", self.year_var, row=7)
+        self._grid_labeled_entry(frm_meta, "Genre", self.genre_var, row=8)
 
         ttk.Label(frm_meta, text="champ vide = pas de modification").grid(
-            row=6, column=0, columnspan=2, sticky="w", padx=10, pady=(2, 10)
+            row=9, column=0, columnspan=2, sticky="w", padx=10, pady=(2, 10)
         )
 
-    def _grid_labeled_entry(self, parent, label, var, row):
+    def _grid_labeled_entry(self, parent, label, var, row) -> ttk.Entry:
         ttk.Label(parent, text=f"{label} :").grid(row=row, column=0, sticky="w", padx=10, pady=(0, 6))
-        ttk.Entry(parent, textvariable=var).grid(row=row, column=1, sticky="ew", padx=10, pady=(0, 6))
+        ent = ttk.Entry(parent, textvariable=var)
+        ent.grid(row=row, column=1, sticky="ew", padx=10, pady=(0, 6))
+        return ent
+
+    def _bind_apply_state(self):
+        """Recalcule l'état du bouton 'Appliquer' quand les options changent."""
+        def _on_change(*_):
+            self._update_apply_state()
+
+        for v in (self.enable_tags_var, self.enable_cover_var, self.cover_path_var):
+            try:
+                v.trace_add("write", _on_change)   # Tk >= 8.5
+            except Exception:
+                v.trace("w", _on_change)           # fallback ancien Tk
+
+    def _bind_field_state(self):
+        """Met à jour l'état (editable/non editable) des champs Titre et N°."""
+        def _on_change(*_):
+            self._update_title_track_state()
+
+        for v in (self.track_from_filename_var, self.title_from_filename_var):
+            try:
+                v.trace_add("write", _on_change)
+            except Exception:
+                v.trace("w", _on_change)
+
+    def _update_title_track_state(self):
+        """Grise les champs 'N° de piste' et/ou 'Titre' selon les cases cochées."""
+        if self.ent_track is not None:
+            self.ent_track.configure(state=("disabled" if self.track_from_filename_var.get() else "normal"))
+        if self.ent_title is not None:
+            self.ent_title.configure(state=("disabled" if self.title_from_filename_var.get() else "normal"))
+
+    def _update_apply_state(self):
+        """Active/désactive 'Appliquer' selon les options."""
+        if self.worker_thread and self.worker_thread.is_alive():
+            return
+
+        enable_tags = bool(self.enable_tags_var.get())
+        enable_cover = bool(self.enable_cover_var.get())
+
+        cover_path = self.cover_path_var.get().strip()
+        cover_ok = (not enable_cover) or (cover_path and os.path.isfile(cover_path))
+
+        should_enable = (enable_tags or enable_cover) and cover_ok
+        self.btn_apply.configure(state=("normal" if should_enable else "disabled"))
 
     # ---------------- Sélection ----------------
 
@@ -261,7 +341,6 @@ class TagsTab:
         if not paths:
             return
 
-        # Robustesse: certains dialogs renvoient une str Tcl
         if isinstance(paths, str):
             paths = self.parent.tk.splitlist(paths)
 
@@ -280,77 +359,44 @@ class TagsTab:
                 existing.add(p)
 
         self._refresh_files_view()
+
         if not self.outdir_var.get().strip():
-            self.reset_outdir_default()
+            self.outdir_var.set(_default_outdir_for_files(self.files))
+
+    def _refresh_files_view(self):
+        self.lb.delete(0, "end")
+        for p in self.files:
+            self.lb.insert("end", os.path.basename(p))
+
+        if not self.files:
+            self.in_summary_var.set("Aucun fichier sélectionné.")
+        else:
+            self.in_summary_var.set(f"{len(self.files)} fichier(s) sélectionné(s).")
+
+    def remove_selected(self):
+        sel = list(self.lb.curselection())
+        if not sel:
+            return
+        sel_paths = {self.files[i] for i in sel if 0 <= i < len(self.files)}
+        self.files = [p for p in self.files if p not in sel_paths]
+        self._refresh_files_view()
 
     def clear_files(self):
         self.files = []
         self._refresh_files_view()
-        self.outdir_var.set("")
 
-    def _refresh_files_view(self):
-        self.listbox.delete(0, "end")
-        if not self.files:
-            self.in_summary_var.set("Aucun fichier sélectionné.")
-            return
-
-        self.in_summary_var.set(f"{len(self.files)} fichier(s) sélectionné(s).")
-
-        show = self.files[:200]
-        for p in show:
-            self.listbox.insert("end", os.path.basename(p))
-        if len(self.files) > 200:
-            self.listbox.insert("end", f"... (+{len(self.files) - 200} autres)")
-
-    # ---------------- Sortie & cover ----------------
-
-    def choose_outdir(self):
-        initial = self.outdir_var.get().strip() or (os.path.dirname(self.files[0]) if self.files else os.path.expanduser("~"))
-        d = filedialog.askdirectory(initialdir=initial, title="Choisir le dossier de sortie")
+    def pick_outdir(self):
+        d = filedialog.askdirectory(title="Choisir le dossier de sortie")
         if d:
             self.outdir_var.set(os.path.abspath(d))
 
-    def reset_outdir_default(self):
-        if not self.files:
-            self.outdir_var.set("")
-            return
-        self.outdir_var.set(_default_outdir_for_files(self.files))
-
-    def choose_cover(self):
+    def pick_cover(self):
         p = filedialog.askopenfilename(
-            title="Choisir une image (JPG/PNG)",
-            filetypes=[("Images", "*.jpg *.jpeg *.png"), ("Tous les fichiers", "*.*")],
+            title="Choisir une image de couverture",
+            filetypes=[("Images", "*.jpg *.jpeg *.png *.webp"), ("Tous les fichiers", "*.*")],
         )
         if p:
             self.cover_path_var.set(os.path.abspath(p))
-            
-    def _bind_apply_state(self):
-        """Recalcule l'état du bouton 'Appliquer' quand les options changent."""
-        def _on_change(*_):
-            self._update_apply_state()
-
-        for v in (self.enable_tags_var, self.enable_cover_var, self.cover_path_var):
-            try:
-                v.trace_add("write", _on_change)   # Tk >= 8.5
-            except Exception:
-                v.trace("w", _on_change)           # fallback ancien Tk
-
-    def _update_apply_state(self):
-        """Active/désactive 'Appliquer' selon les options."""
-        # Si un traitement est en cours, start_apply gère déjà disabled/stop etc.
-        if self.worker_thread and self.worker_thread.is_alive():
-            return
-
-        enable_tags = bool(self.enable_tags_var.get())
-        enable_cover = bool(self.enable_cover_var.get())
-
-        cover_path = self.cover_path_var.get().strip()
-        cover_ok = (not enable_cover) or (cover_path and os.path.isfile(cover_path))
-
-        # Règle: Appliquer seulement si (tags OU cover) ET cover valide si cover cochée
-        should_enable = (enable_tags or enable_cover) and cover_ok
-
-        self.btn_apply.configure(state=("normal" if should_enable else "disabled"))
 
     # ---------------- Traitement ----------------
 
@@ -379,6 +425,7 @@ class TagsTab:
             return
 
         plan = _TagPlan(
+            track=self.track_var.get().strip(),
             title=self.title_var.get().strip(),
             artist=self.artist_var.get().strip(),
             album=self.album_var.get().strip(),
@@ -392,87 +439,99 @@ class TagsTab:
         square_cover = bool(self.square_cover_var.get())
 
         if enable_cover and (not cover_path or not os.path.isfile(cover_path)):
-            messagebox.showwarning("Image manquante", "Vous avez activé la couverture, mais aucune image valide n'est sélectionnée.")
+            messagebox.showerror("Couverture", "Veuillez choisir une image de couverture valide.")
             return
 
-        # reset stop flags
-        self.stop_flag.clear()
-        if getattr(self.app, "stop_flag", None) is not None:
-            self.app.stop_flag.clear()
+        use_title_from_filename = bool(self.title_from_filename_var.get())
+        use_track_from_filename = bool(self.track_from_filename_var.get())
 
+        # UI state
+        self.stop_flag.clear()
         self.btn_apply.configure(state="disabled")
         self.btn_stop.configure(state="normal")
-        self.pb.configure(maximum=len(self.files), value=0)
+        self.pb.configure(value=0, maximum=max(1, len(self.files)))
 
         self.worker_thread = threading.Thread(
             target=self._worker_apply,
-            args=(list(self.files), outdir, enable_tags, plan, cover_path, square_cover),
+            args=(ffmpeg, outdir, plan, enable_tags, enable_cover, cover_path, square_cover, use_title_from_filename, use_track_from_filename),
             daemon=True,
         )
         self.worker_thread.start()
 
     def stop_apply(self):
-        self.stop_flag.set()
-        try:
-            if getattr(self.app, "stop_flag", None) is not None:
-                self.app.stop_flag.set()
-        except Exception:
-            pass
-        if hasattr(self.app, "log"):
-            self.app.log("⏹️ Métadonnées : arrêt demandé…")
+        if self.worker_thread and self.worker_thread.is_alive():
+            self.stop_flag.set()
 
-    def _worker_apply(self, files: list[str], outdir: str, enable_tags: bool, plan: _TagPlan, cover_path: str, square_cover: bool):
-        app_log = getattr(self.app, "log", print)
-        run_subprocess = getattr(self.app, "run_subprocess", None)
-
-        # Normalement toujours fourni par App (klmp3.py).
-        # Le fallback ci-dessous est une sécurité si tab_tags.py est utilisé hors KLMP3.
-        if run_subprocess is None:
-            from subprocess import Popen, PIPE, STDOUT
-
-            def run_subprocess(cmd, on_line, stop_flag):
-                proc = Popen(cmd, stdout=PIPE, stderr=STDOUT, text=True, encoding="utf-8", errors="replace", bufsize=1)
+    def _worker_apply(
+        self,
+        ffmpeg: str,
+        outdir: str,
+        plan: _TagPlan,
+        enable_tags: bool,
+        enable_cover: bool,
+        cover_path: str,
+        square_cover: bool,
+        title_from_filename: bool,
+        track_from_filename: bool,
+    ):
+        def app_log(msg: str):
+            if hasattr(self.app, "log"):
                 try:
-                    assert proc.stdout is not None
-                    for line in proc.stdout:
-                        if stop_flag.is_set():
-                            try:
-                                proc.terminate()
-                            except Exception:
-                                pass
-                            return 130
-                        on_line(line.rstrip("\n"))
-                    return proc.wait()
-                finally:
-                    try:
-                        if proc.stdout:
-                            proc.stdout.close()
-                    except Exception:
-                        pass
+                    self.app.log(msg)
+                except Exception:
+                    pass
 
-        ffmpeg = self.app.ffmpeg_path
+        def ui_done(success: bool, msg: str):
+            def _f():
+                self.btn_stop.configure(state="disabled")
+                self._update_apply_state()
+                if msg:
+                    if success:
+                        messagebox.showinfo("Terminé", msg)
+                    else:
+                        messagebox.showwarning("Arrêté", msg)
+            try:
+                self.parent.after(0, _f)
+            except Exception:
+                pass
 
         cover_tmp = ""
-        if cover_path:
-            cover_tmp = _load_and_prepare_cover(cover_path, make_square=square_cover, max_size=1000)
-
-        ok_count = 0
-        fail_count = 0
-
-        app_log("")
-        app_log("🧾 Métadonnées : démarrage du traitement…")
-        app_log(f"📂 Sortie : {outdir}")
-        app_log(f"🗂️ Fichiers : {len(files)}")
-
         try:
-            for i, in_path in enumerate(files, start=1):
+            if enable_cover and cover_path:
+                cover_tmp = self._prepare_cover_tmp(cover_path, square_cover)
+
+            total = len(self.files)
+            for idx, in_path in enumerate(self.files, start=1):
                 if self.stop_flag.is_set():
-                    app_log("⏹️ Métadonnées : interrompu par l’utilisateur.")
-                    break
+                    ui_done(False, "Traitement interrompu.")
+                    return
 
                 base = os.path.basename(in_path)
                 out_path = _dedupe_outpath(outdir, base)
 
+                # ---- Déductions depuis le nom de fichier (sans renommage) ----
+                trk_fn, title_wo_trk, title_full = _extract_track_and_title_from_filename(in_path)
+
+                # Track à écrire
+                track_to_write = ""
+                if enable_tags:
+                    if track_from_filename:
+                        track_to_write = trk_fn.strip()
+                    else:
+                        track_to_write = plan.track.strip()
+
+                # Title à écrire
+                title_to_write = ""
+                if enable_tags:
+                    if title_from_filename:
+                        if track_from_filename and trk_fn:
+                            title_to_write = title_wo_trk.strip()
+                        else:
+                            title_to_write = title_full.strip()
+                    else:
+                        title_to_write = plan.title.strip()
+
+                # ---- Commande ffmpeg ----
                 cmd = [ffmpeg, "-y", "-hide_banner", "-i", in_path]
 
                 use_cover = bool(cover_tmp) and _cover_supported_for(in_path)
@@ -483,11 +542,20 @@ class TagsTab:
                     cmd += ["-i", cover_tmp]
                     cmd += ["-map", "0:a:0", "-map", "1:v:0", "-c:a", "copy", "-c:v", "mjpeg", "-disposition:v:0", "attached_pic"]
                 else:
-                    cmd += ["-map", "0:a", "-c", "copy"]
+                    cmd += ["-map", "0", "-c", "copy"]
+
+                # ✅ Conserver toutes les métadonnées existantes du fichier d'entrée
+                cmd += ["-map_metadata", "0"]
 
                 if enable_tags:
-                    if plan.title:
-                        cmd += ["-metadata", f"title={plan.title}"]
+                    # Tracknumber (si disponible)
+                    if track_to_write:
+                        cmd += ["-metadata", f"track={track_to_write}"]
+
+                    # Title (si disponible)
+                    if title_to_write:
+                        cmd += ["-metadata", f"title={title_to_write}"]
+
                     if plan.artist:
                         cmd += ["-metadata", f"artist={plan.artist}"]
                     if plan.album:
@@ -497,53 +565,62 @@ class TagsTab:
                     if plan.genre:
                         cmd += ["-metadata", f"genre={plan.genre}"]
 
+                # Forcer ID3v2.3 pour MP3 (compat lecteurs/Kodi)
                 if in_path.lower().endswith(".mp3") or out_path.lower().endswith(".mp3"):
                     cmd += ["-id3v2_version", "3"]
 
+                # Fichier de sortie 
                 cmd += [out_path]
 
-                app_log("")
-                app_log(f"🧷 [{i}/{len(files)}] {base}")
-                app_log("▶️ ffmpeg : " + " ".join(cmd))
+                # Exécuter
+                app_log(f"🎛️ Tags: {idx}/{total} — {base}")
+                try:
+                    import subprocess
+                    p = subprocess.run(cmd, capture_output=True, text=True)
+                    if p.returncode != 0:
+                        app_log("❌ ffmpeg a échoué : " + (p.stderr.strip() or "Erreur inconnue"))
+                    else:
+                        app_log("✅ OK : " + os.path.basename(out_path))
+                except Exception as e:
+                    app_log(f"❌ Exception ffmpeg : {e}")
 
-                def on_line(line: str):
-                    if line and ("error" in line.lower() or "invalid" in line.lower()):
-                        app_log(line)
+                # progress UI
+                try:
+                    self.parent.after(0, lambda v=idx: self.pb.configure(value=v))
+                except Exception:
+                    pass
 
-                rc = run_subprocess(cmd, on_line, self.stop_flag)
-                if rc == 0 and os.path.isfile(out_path):
-                    ok_count += 1
-                else:
-                    fail_count += 1
-                    app_log(f"❌ Échec : {base} (code {rc})")
-
-                self.parent.after(0, self._set_progress, i)
+            ui_done(True, f"Terminé.\n\nFichiers générés dans :\n{outdir}")
 
         finally:
-            try:
-                if cover_tmp and cover_tmp != cover_path and os.path.isfile(cover_tmp):
+            # Nettoyage cover tmp
+            if cover_tmp and os.path.isfile(cover_tmp):
+                try:
                     os.remove(cover_tmp)
-            except Exception:
-                pass
+                except Exception:
+                    pass
 
-            self.parent.after(0, self._finish_ui, ok_count, fail_count)
-
-    def _set_progress(self, value: int):
+    def _prepare_cover_tmp(self, cover_path: str, square_cover: bool) -> str:
+        """
+        Prépare une image temporaire (jpeg) pour ffmpeg.
+        - si square_cover: rogne en carré centré
+        """
         try:
-            self.pb.configure(value=value)
+            from PIL import Image
         except Exception:
-            pass
+            raise RuntimeError("Pillow est requis pour préparer la couverture (pip install pillow).")
 
-    def _finish_ui(self, ok_count: int, fail_count: int):
-        self._update_apply_state()
-        self.btn_stop.configure(state="disabled")
+        img = Image.open(cover_path).convert("RGB")
 
-        msg = f"Métadonnées : {ok_count} OK"
-        if fail_count:
-            msg += f", {fail_count} échec(s)"
-        if hasattr(self.app, "log"):
-            self.app.log("✅ " + msg)
-        try:
-            messagebox.showinfo("Métadonnées", msg)
-        except Exception:
-            pass
+        if square_cover:
+            w, h = img.size
+            side = min(w, h)
+            left = (w - side) // 2
+            top = (h - side) // 2
+            img = img.crop((left, top, left + side, top + side))
+
+        # JPEG temporaire
+        fd, tmp_path = tempfile.mkstemp(prefix="klmp3_cover_", suffix=".jpg")
+        os.close(fd)
+        img.save(tmp_path, format="JPEG", quality=92, optimize=True)
+        return tmp_path

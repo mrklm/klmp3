@@ -185,6 +185,64 @@ puis effectue la conversion vers le format choisi 🔄
 
 - Le chemin peut être personnalisé dans les options
 
+
+🎼 À propos des titres et numéros de piste (important)
+
+KLMP3 ne modifie jamais le nom des fichiers.
+
+Il travaille uniquement sur les métadonnées internes (tags audio).
+
+🗂️ Nom de fichier ≠ Titre
+
+Le nom de fichier (ex. 01 - Ma chanson.mp3) sert surtout à l’organisation humaine.
+
+Le Titre est une métadonnée (TITLE) utilisée par les lecteurs comme Kodi.
+
+Beaucoup de lecteurs sur ordinateur affichent le nom du fichier quand le Titre est absent.
+
+Kodi, lui, est plus strict : si le Titre n’existe pas, il n’affiche rien.
+
+🔢 Numéro de piste
+
+Pour classer correctement les morceaux d’un album, les lecteurs utilisent le tag :
+
+N° de piste (TRACKNUMBER)
+
+Sans ce tag, le tri peut devenir alphabétique ou imprévisible.
+
+✅ Comportement par défaut de KLMP3
+
+Pour éviter toute erreur lors d’une édition en groupe :
+
+☑️ Nom du fichier = titre
+
+→ le Titre est déduit automatiquement du nom de fichier
+
+☑️ N° du fichier = N° de piste
+
+→ le numéro est extrait du début du nom (01, 02, …)
+
+Exemple :
+
+01 - Ma chanson.mp3
+→ Titre : Ma chanson
+→ N° de piste : 1
+
+
+Ces options peuvent être désactivées si vous souhaitez saisir les valeurs manuellement.
+
+--- 
+
+🧠 En résumé
+
+🗂️ le nom de fichier n’est jamais modifié
+
+🎵 le Titre sert à l’affichage
+
+🔢 le N° de piste sert au classement
+
+📚 pour une compatibilité parfaite avec Kodi, les deux doivent être renseignés
+
 ---
 
 🧠 En résumé

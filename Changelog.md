@@ -5,6 +5,22 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.6.3] – 2026-01-26
+
+Ajouté
+
+ - Champs N° dans édition des métadonnées, on utilise le N° dans le 
+   nom du fichier par defaut (case à cocher cochée)
+
+Modifié
+
+ - logique de métadonnées : nom de fichier n'égale pas titre on utilise le 
+   titre dans le nom du fichier par defaut (case à cocher cochée) 
+
+ - Si la case "ajouter une pochette" n'est pas cochée et qu'il y à déja une pochette, elle reste en place  
+
+---
+
 [2.6.2] – 2026-01-19
 
 Ajouté
