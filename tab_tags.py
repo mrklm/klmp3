@@ -385,6 +385,10 @@ class TagsTab:
         self.files = []
         self._refresh_files_view()
 
+        # Reset du dossier de sortie : le prochain "Ajouter…" recalculera un défaut
+        self.outdir_var.set("")
+
+
     def pick_outdir(self):
         d = filedialog.askdirectory(title="Choisir le dossier de sortie")
         if d:

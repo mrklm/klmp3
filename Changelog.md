@@ -5,6 +5,14 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.6.4] – 2026-01-26
+
+Modifié
+
+ - Métadonnées: Le chemin de sortie se remet à zéro lorsque l'on change de répertoire d'entrée
+
+---
+
 [2.6.3] – 2026-01-26
 
 Ajouté
