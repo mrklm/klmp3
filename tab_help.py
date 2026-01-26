@@ -104,6 +104,10 @@ class HelpTab(ttk.Frame):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 content = f.read()
+
+            # Nettoyage Unicode : supprime les Variation Selectors (ex: U+FE0F) (espaces fantomes sous win)
+            content = content.replace("\uFE0F", "")
+
         except Exception as e:
             content = (
                 f"❌ Impossible de lire {self.md_filename}.\n\n"
