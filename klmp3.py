@@ -495,7 +495,7 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLMP3 - v2.8.2")
+        self.title("KLMP3 - v2.8.3")
         self.geometry("820x620")
         self.minsize(780, 560)
 
@@ -926,6 +926,27 @@ class App(tk.Tk):
             text="Conserver le fichier intermédiaire (utile pour debug)",
             variable=self.keep_intermediate_var
         ).pack(side="left")
+        
+        # --- Options → Métadonnées (auto) ---
+        frm_meta_auto = ttk.LabelFrame(parent, text="Métadonnées (automatique)")
+        frm_meta_auto.pack(fill="x", padx=10, pady=(0, 8))
+
+        row_m1 = ttk.Frame(frm_meta_auto)
+        row_m1.pack(fill="x", padx=10, pady=(8, 4))
+        ttk.Checkbutton(
+            row_m1,
+            text="N° de piste = N° de fichier",
+            variable=self.track_from_filename_var
+        ).pack(side="left")
+
+        row_m2 = ttk.Frame(frm_meta_auto)
+        row_m2.pack(fill="x", padx=10, pady=(0, 8))
+        ttk.Checkbutton(
+            row_m2,
+            text="Titre = Nom du fichier",
+            variable=self.title_from_filename_var
+        ).pack(side="left")
+
 
         # --- Mise à jour yt-dlp (pour l'utilisateur) ---
         frm_updates = ttk.LabelFrame(parent, text="Mise à jour")
