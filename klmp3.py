@@ -390,7 +390,7 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLMP3 - 2.8")
+        self.title("KLMP3 - v2.8.1")
         self.geometry("820x620")
         self.minsize(780, 560)
 
@@ -1133,9 +1133,9 @@ class App(tk.Tk):
                 "skip_download": True,
                 "extract_flat": True,      # évite la résolution lourde
                 "playlist_items": "1",     # juste pour obtenir le titre, pas toute la playlist
-                "socket_timeout": 10,
-                "retries": 1,
-                "fragment_retries": 0,
+                "socket_timeout": 30,
+                "retries": 5,
+                "fragment_retries": 5,
             }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
@@ -1579,6 +1579,13 @@ class App(tk.Tk):
                 "no_warnings": True,
                 "progress_hooks": [hook],
                 "logger": _YDLLogger(self.log),
+
+                # Robustesse réseau (utile en Wi-Fi faible)
+                "socket_timeout": 300,
+                "retries": 20,
+                "fragment_retries": 50,
+                "concurrent_fragment_downloads": 1,
+                "retry_sleep_functions": {"http": lambda n: 1},
             }
 
             # Nettoyage des fragments (.part-Frag...) : on ne garde PAS ces temporaires.

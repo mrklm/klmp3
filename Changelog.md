@@ -5,6 +5,15 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.8.1] – 2026-01-27
+
+Modifié
+
+ - Augmentation des temps (timeout) pour eviter les décrochages en cas de wifi bof
+   timeout de téléchargement et timeout de création de répertoire de playlist
+
+---
+
 [2.8] – 2026-01-27
 
 Ajouté
@@ -27,7 +36,7 @@ Modifié
 
 Modifié
 
- - Systeme anticolision de noms revu: plus de code ID type :"[HHF697HHGV]" en mode automatique mais
+ - Systeme anticolision de noms revu: plus de code ID type:"[HHF697HHGV]" en mode automatique mais
    à la place une numérotation type "(02),(03)..." seulement en cas de doublons.
    
  - Numerotation automatique des playlists (01 - ,02 - ...) si moins de 100 titres, et (001 - ,002 - ...)
