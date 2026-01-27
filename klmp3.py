@@ -390,7 +390,7 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLMP3 - v2.7")
+        self.title("KLMP3 - 2.7.1")
         self.geometry("820x620")
         self.minsize(780, 560)
 
@@ -440,6 +440,11 @@ class App(tk.Tk):
         self.flac_level_var = tk.StringVar(value="5")             # 0..8
 
         self.keep_intermediate_var = tk.BooleanVar(value=False)
+
+        # Options → Métadonnées (centralisées)
+        self.square_cover_var = tk.BooleanVar(value=True)
+        self.track_from_filename_var = tk.BooleanVar(value=True)
+        self.title_from_filename_var = tk.BooleanVar(value=True)
 
         # UI refs
         self._logo_img = None  # keep ref
@@ -1147,85 +1152,6 @@ class App(tk.Tk):
             return base_outdir
 
 
-
-    def _sanitize_filename_component(self, name: str, max_len: int = 200) -> str:
-        """Nettoie un nom de fichier (sans chemin) pour le rendre portable (Windows/macOS/Linux)."""
-        s = (name or "").strip()
-        # Caractères interdits sous Windows + séparateurs
-        s = re.sub(r'[\\/:*?"<>|]+', "_", s)
-        # Contrôles ASCII
-        s = re.sub(r"[\x00-\x1f\x7f]", "", s)
-        # Espaces
-        s = re.sub(r"\s+", " ", s).strip()
-        # Points/espaces en fin (Windows n'aime pas)
-        s = s.rstrip(" .")
-        if not s:
-            s = "audio"
-        return s[:max_len].strip() or "audio"
-
-    def _unique_path_with_suffix(self, path: str) -> str:
-        """Retourne un chemin libre en ajoutant " (2)", " (3)", … avant l'extension si nécessaire."""
-        if not os.path.exists(path):
-            return path
-        folder = os.path.dirname(path)
-        base, ext = os.path.splitext(os.path.basename(path))
-        n = 2
-        while True:
-            candidate = os.path.join(folder, f"{base} ({n}){ext}")
-            if not os.path.exists(candidate):
-                return candidate
-            n += 1
-
-    def _playlist_index_width(self, dl_mode: str, limit_on: bool, limit_n: int) -> int:
-        """Largeur de numérotation pour les playlists (02, 003, 0004…)."""
-        # Playlist complète (checkbox "Limiter à" NON cochée) : 3 chiffres (001, 002, …)
-        if dl_mode == DL_MODE_PLAYLIST and not limit_on:
-            return 3
-
-        # Playlist limitée : on adapte à la limite
-        try:
-            n = int(limit_n)
-        except Exception:
-            n = 2
-        if n < 100:
-            return 2
-        if n < 1000:
-            return 3
-        return 4
-
-    def _probe_title_single(self, url: str, platform: str) -> str:
-        """Essaie d'obtenir un titre avant téléchargement (pour générer un nom stable et gérer les doublons)."""
-        try:
-            import yt_dlp  # type: ignore
-        except Exception:
-            return ""
-
-        ydl_opts = {
-            "quiet": True,
-            "no_warnings": True,
-            "skip_download": True,
-        }
-
-        # Reprendre les cookies/JS runtime comme dans le téléchargement (best effort)
-        if platform == "youtube":
-            token = (self.yt_browser_token_var.get().strip() if getattr(self, "yt_browser_token_var", None) else "") or "firefox"
-            ydl_opts["cookiesfrombrowser"] = (token,)
-            deno_path = getattr(self, "deno_path", None)
-            if deno_path and os.path.isfile(deno_path):
-                ydl_opts["js_runtimes"] = {"deno": {"path": deno_path}}
-                ydl_opts["remote_components"] = {"ejs:github"}
-
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-            # Si c'est une playlist, on ne l'utilise pas ici
-            if isinstance(info, dict) and info.get("_type") in ("playlist", "multi_video"):
-                return ""
-            if isinstance(info, dict):
-                return (info.get("title") or "").strip()
-            return ""
-        except Exception:
-            return ""
     def choose_outdir(self):
         """Choisit le dossier de sortie (sans rajouter de sous-dossier automatique)."""
         d = filedialog.askdirectory(
@@ -1440,28 +1366,31 @@ class App(tk.Tk):
         """
         Télécharge un fichier audio (intermédiaire) avec yt-dlp, puis convertit avec ffmpeg.
         """
-        # Dossier de sortie effectif
+        # Template intermédiaire : on garde l'extension d'origine
         url_outdir = outdir
 
-        # Playlist YouTube : sous-dossier au nom de la playlist (best effort)
         if platform == "youtube" and dl_mode == DL_MODE_PLAYLIST:
             self.log("📁 Préparation du dossier de playlist…")
             url_outdir = self._ensure_playlist_subdir(outdir, url)
 
-        # Template intermédiaire (yt-dlp) : l'extension d'origine est conservée ici,
-        # puis la conversion ffmpeg produit le fichier final.
-        if dl_mode == DL_MODE_PLAYLIST:
-            # Playlist : numérotation stable + titre (ex: 01 - Titre.webm)
-            width = self._playlist_index_width(dl_mode=dl_mode, limit_on=limit_on, limit_n=limit_n)
-            outtmpl = os.path.join(url_outdir, f"%(playlist_index)0{width}d - %(title).200s.%(ext)s")
+        # Modèle de nom de fichier :
+        # - Playlist : ajoute l'index de playlist
+        #   • si "Limité à" <= 99 => 2 chiffres (01..99)
+        #   • sinon => 3 chiffres (001..999)
+        # - Sinon : titre seul (pas d'ID YouTube entre crochets)
+        if platform == "youtube" and dl_mode == DL_MODE_PLAYLIST:
+            pad = 3
+            if limit_on:
+                try:
+                    n = int(limit_n)
+                except Exception:
+                    n = 0
+                if 1 <= n <= 99:
+                    pad = 2
+
+            outtmpl = os.path.join(url_outdir, f"%(playlist_index)0{pad}d - %(title).200s.%(ext)s")
         else:
-            # Single : nom lisible, et uniquement en cas de collision => suffixe (2)(3)...
-            title = self._probe_title_single(url, platform=platform)
-            base = self._sanitize_filename_component(title or "audio")
-            desired_final = os.path.join(url_outdir, f"{base}.{fmt}")
-            unique_final = self._unique_path_with_suffix(desired_final)
-            unique_base = os.path.splitext(unique_final)[0]
-            outtmpl = unique_base + ".%(ext)s"
+            outtmpl = os.path.join(url_outdir, "%(title).200s.%(ext)s")
 
         ok, downloaded = self._download_audio(
             url, outtmpl,
@@ -1480,6 +1409,9 @@ class App(tk.Tk):
 
         converted = 0
         for downloaded_path in downloaded_paths:
+            if platform == "youtube" and dl_mode == DL_MODE_PLAYLIST:
+                downloaded_path = self._normalize_playlist_double_numbering(downloaded_path)
+
             # Annulation utilisateur : avant conversion, on nettoie l'intermédiaire courant
             if self.stop_flag.is_set():
                 self.log("⏹️ Annulation demandée — nettoyage en cours…")
@@ -1875,11 +1807,55 @@ class App(tk.Tk):
             return False, "⏹️ Arrêté par l’utilisateur."
 
         return False, f"ffmpeg a échoué (code {rc})."
+    
+    def _normalize_playlist_double_numbering(self, path: str) -> str:
+        
+        """
+        Corrige les titres de playlist déjà numérotés du style :
+        '011 - 11 - Titre.ext'  -> '011 - Titre.ext'
+        """
+        try:
+            folder = os.path.dirname(path)
+            name = os.path.basename(path)
+
+            m = re.match(r"^(\d{2,3})\s*-\s*(\d{1,3})\s*-\s*(.+)$", name)
+
+            if not m:
+                return path
+
+            a3 = m.group(1)
+            b = m.group(2)
+            rest = m.group(3)
+
+            if int(a3) != int(b):
+                return path
+
+            new_name = f"{a3} - {rest}"
+            new_path = os.path.join(folder, new_name)
+
+            if os.path.normcase(new_path) == os.path.normcase(path):
+                return path
+
+            if os.path.exists(new_path):
+                base, ext = os.path.splitext(new_name)
+                i = 2
+                while True:
+                    candidate = os.path.join(folder, f"{base} ({i}){ext}")
+                    if not os.path.exists(candidate):
+                        new_path = candidate
+                        break
+                    i += 1
+
+            os.rename(path, new_path)
+            return new_path
+        except Exception:
+            return path
 
     def _safe_remove(self, path: str):
         # Rien à faire si le fichier n'existe déjà plus
         if not path or not os.path.exists(path):
             return
+
             
         # Windows peut garder le fichier verrouillé très brièvement après ffmpeg.
         for attempt in range(1, 6):  # 5 essais

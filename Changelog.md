@@ -5,6 +5,15 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.7.1] – 2026-01-26
+
+Modifié
+
+ - Re numérotation automatique si numerotation existente dans les nom de fichiers ex: 
+   001 - fichier.mp3 = 01 - fichier.mp3 - Pas de N° si une seul fichier
+
+---
+
 [2.7] – 2026-01-26
 
 Modifié

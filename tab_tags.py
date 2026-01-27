@@ -108,11 +108,15 @@ class TagsTab:
 
         self.enable_tags_var = tk.BooleanVar(value=False)
         self.enable_cover_var = tk.BooleanVar(value=False)
-        self.square_cover_var = tk.BooleanVar(value=True)
+        self.square_cover_var = getattr(app, "square_cover_var", tk.BooleanVar(value=True))
 
-        # ✅ Nouveaux comportements "depuis le nom de fichier"
-        self.track_from_filename_var = tk.BooleanVar(value=True)
-        self.title_from_filename_var = tk.BooleanVar(value=True)
+        # Comportements "depuis le nom de fichier" (pilotés depuis Options si présents)
+        self.track_from_filename_var = getattr(app, "track_from_filename_var", tk.BooleanVar(value=True))
+        self.title_from_filename_var = getattr(app, "title_from_filename_var", tk.BooleanVar(value=True))
+
+        # Hints affichés dans les champs grisés
+        self._HINT_TRACK = " = N° de fichier, voir Options"
+        self._HINT_TITLE = " = Nom du fichier, voir Options"
 
         # Champs
         self.track_var = tk.StringVar(value="")
@@ -239,11 +243,7 @@ class TagsTab:
         ttk.Entry(frm_cover, textvariable=self.cover_path_var).grid(row=1, column=1, sticky="ew", padx=10, pady=(0, 8))
         ttk.Button(frm_cover, text="Choisir…", command=self.pick_cover).grid(row=1, column=2, sticky="e", padx=(0, 10), pady=(0, 8))
 
-        ttk.Checkbutton(frm_cover, text="Rogner carré (recommandé)", variable=self.square_cover_var).grid(
-            row=2, column=0, columnspan=3, sticky="w", padx=10, pady=(0, 10)
-        )
-
-        frm_meta = ttk.LabelFrame(right, text="Métadonnées")
+        frm_meta = ttk.LabelFrame(right, text="")
         frm_meta.grid(row=1, column=0, sticky="ew")
         frm_meta.columnconfigure(1, weight=1)
 
@@ -251,32 +251,18 @@ class TagsTab:
             row=0, column=0, columnspan=2, sticky="w", padx=10, pady=(8, 6)
         )
 
-        # ✅ Nouveau champ N° de piste
+        # Champs (pilotés depuis Options si l'utilisateur le souhaite)
         self.ent_track = self._grid_labeled_entry(frm_meta, "N° de piste", self.track_var, row=1)
-        ttk.Checkbutton(
-            frm_meta,
-            text="N° du fichier = N° de piste",
-            variable=self.track_from_filename_var,
-            command=self._update_title_track_state,
-        ).grid(row=2, column=0, columnspan=2, sticky="w", padx=26, pady=(0, 8))
-
-        # ✅ Champ Titre + option filename->title
-        self.ent_title = self._grid_labeled_entry(frm_meta, "Titre", self.title_var, row=3)
-        ttk.Checkbutton(
-            frm_meta,
-            text="Nom du fichier = titre",
-            variable=self.title_from_filename_var,
-            command=self._update_title_track_state,
-        ).grid(row=4, column=0, columnspan=2, sticky="w", padx=26, pady=(0, 8))
+        self.ent_title = self._grid_labeled_entry(frm_meta, "Titre", self.title_var, row=2)
 
         # Autres champs
-        self._grid_labeled_entry(frm_meta, "Artiste", self.artist_var, row=5)
-        self._grid_labeled_entry(frm_meta, "Album", self.album_var, row=6)
-        self._grid_labeled_entry(frm_meta, "Année", self.year_var, row=7)
-        self._grid_labeled_entry(frm_meta, "Genre", self.genre_var, row=8)
+        self._grid_labeled_entry(frm_meta, "Artiste", self.artist_var, row=3)
+        self._grid_labeled_entry(frm_meta, "Album", self.album_var, row=4)
+        self._grid_labeled_entry(frm_meta, "Année", self.year_var, row=5)
+        self._grid_labeled_entry(frm_meta, "Genre", self.genre_var, row=6)
 
         ttk.Label(frm_meta, text="champ vide = pas de modification").grid(
-            row=9, column=0, columnspan=2, sticky="w", padx=10, pady=(2, 10)
+            row=7, column=0, columnspan=2, sticky="w", padx=10, pady=(2, 10)
         )
 
     def _grid_labeled_entry(self, parent, label, var, row) -> ttk.Entry:
@@ -301,18 +287,46 @@ class TagsTab:
         def _on_change(*_):
             self._update_title_track_state()
 
-        for v in (self.track_from_filename_var, self.title_from_filename_var):
+        for v in (self.enable_tags_var, self.track_from_filename_var, self.title_from_filename_var):
             try:
                 v.trace_add("write", _on_change)
             except Exception:
                 v.trace("w", _on_change)
 
     def _update_title_track_state(self):
-        """Grise les champs 'N° de piste' et/ou 'Titre' selon les cases cochées."""
+        """Met à jour l'état des champs 'N° de piste' et 'Titre'.
+
+        - Si l'option (Options) impose une valeur depuis le nom/numéro de fichier, le champ reste grisé
+          et affiche un hint (sans être utilisé comme vraie métadonnée lors de l'export).
+        - Si 'Appliquer les métadonnées' est décoché, tous les champs restent grisés.
+        """
+        enable_tags = bool(self.enable_tags_var.get())
+
+        # ---- N° de piste ----
         if self.ent_track is not None:
-            self.ent_track.configure(state=("disabled" if self.track_from_filename_var.get() else "normal"))
+            forced = bool(self.track_from_filename_var.get())
+            if (not enable_tags) or forced:
+                self.ent_track.configure(state="disabled")
+                cur = (self.track_var.get() or "").strip()
+                if forced and (cur == "" or cur == self._HINT_TRACK):
+                    self.track_var.set(self._HINT_TRACK)
+            else:
+                self.ent_track.configure(state="normal")
+                if (self.track_var.get() or "").strip() == self._HINT_TRACK:
+                    self.track_var.set("")
+
+        # ---- Titre ----
         if self.ent_title is not None:
-            self.ent_title.configure(state=("disabled" if self.title_from_filename_var.get() else "normal"))
+            forced = bool(self.title_from_filename_var.get())
+            if (not enable_tags) or forced:
+                self.ent_title.configure(state="disabled")
+                cur = (self.title_var.get() or "").strip()
+                if forced and (cur == "" or cur == self._HINT_TITLE):
+                    self.title_var.set(self._HINT_TITLE)
+            else:
+                self.ent_title.configure(state="normal")
+                if (self.title_var.get() or "").strip() == self._HINT_TITLE:
+                    self.title_var.set("")
 
     def _update_apply_state(self):
         """Active/désactive 'Appliquer' selon les options."""
