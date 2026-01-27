@@ -16,6 +16,7 @@ Notes:
 import os
 import re
 import urllib.parse
+import urllib.request
 import sys
 import shutil
 import threading
@@ -224,17 +225,121 @@ def ytdlp_module_available() -> bool:
         return True
     except Exception:
         return False
+    
+def _user_tools_base_dir(app_name: str = "KLMp3") -> str:
+    """Retourne un dossier écrivable pour stocker des outils mis à jour par l'utilisateur."""
+    if sys.platform.startswith("win"):
+        base = os.environ.get("APPDATA") or os.path.expanduser("~")
+        return os.path.join(base, app_name, "tools")
+    if sys.platform == "darwin":
+        return os.path.join(os.path.expanduser("~/Library/Application Support"), app_name, "tools")
+    base = os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
+    return os.path.join(base, app_name, "tools")
+
+
+def _user_tool_path(tool_name: str) -> str:
+    """Chemin complet d'un outil utilisateur (séparé par plateforme)."""
+    base = _user_tools_base_dir("KLMp3")
+    tag = _platform_tag()
+    return os.path.join(base, tag, tool_name)
+
+
+def _ytdlp_release_asset_name() -> str:
+    """Nom de l'asset officiel yt-dlp (GitHub releases) selon l'OS."""
+    if sys.platform.startswith("win"):
+        return "yt-dlp.exe"
+    if sys.platform == "darwin":
+        return "yt-dlp_macos"
+    return "yt-dlp_linux"
+
+
+def download_latest_ytdlp_to(target_path: str, log_fn) -> bool:
+    """Télécharge la dernière release yt-dlp et l'installe dans target_path."""
+    api_url = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest"
+    asset_name = _ytdlp_release_asset_name()
+
+    log_fn(f"🌐 Vérification de la dernière version yt-dlp ({asset_name})…")
+
+    try:
+        req = urllib.request.Request(api_url, headers={"User-Agent": "KLMp3"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            data = json.loads(r.read().decode("utf-8", errors="replace"))
+    except Exception as e:
+        log_fn(f"❌ Impossible d'interroger GitHub : {e}")
+        return False
+
+    download_url = None
+    for a in data.get("assets", []):
+        if a.get("name") == asset_name:
+            download_url = a.get("browser_download_url")
+            break
+
+    if not download_url:
+        log_fn(f"❌ Asset introuvable dans la release : {asset_name}")
+        return False
+
+    target_dir = os.path.dirname(target_path)
+    os.makedirs(target_dir, exist_ok=True)
+
+    tmp_path = target_path + ".download"
+
+    log_fn("⬇️ Téléchargement en cours…")
+    try:
+        req = urllib.request.Request(download_url, headers={"User-Agent": "KLMp3"})
+        with urllib.request.urlopen(req, timeout=60) as r, open(tmp_path, "wb") as f:
+            shutil.copyfileobj(r, f)
+    except Exception as e:
+        log_fn(f"❌ Téléchargement échoué : {e}")
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except Exception:
+            pass
+        return False
+
+    # Remplacement atomique + permissions
+    try:
+        bak = target_path + ".bak"
+        if os.path.exists(bak):
+            try:
+                os.remove(bak)
+            except Exception:
+                pass
+        if os.path.exists(target_path):
+            os.replace(target_path, bak)
+
+        os.replace(tmp_path, target_path)
+
+        if not sys.platform.startswith("win"):
+            os.chmod(target_path, 0o755)
+
+        log_fn(f"✅ yt-dlp mis à jour : {target_path}")
+        return True
+
+    except Exception as e:
+        log_fn(f"❌ Installation échouée : {e}")
+        return False
+    
 
 
 def find_ytdlp_tools_first() -> ToolPath:
     """
     Stratégie :
-    1) Cherche yt-dlp dans le PATH
-    2) Sinon cherche dans tools/<platform>/yt-dlp (ou .exe sur Windows)
+    1) Cherche yt-dlp dans le dossier utilisateur (écrivable) : Application Support / AppData / ~/.local/share
+    2) Ensuite dans le PATH
+    3) Sinon dans tools/<platform>/yt-dlp (ou .exe sur Windows)
     """
+    user_name = "yt-dlp.exe" if sys.platform.startswith("win") else "yt-dlp"
+    user_cand = _user_tool_path(user_name)
+    if _is_executable(user_cand):
+        return ToolPath(path=user_cand, source="USER")
+    if os.path.isfile(user_cand):
+        return ToolPath(path=user_cand, source="MISSING")
+
     p = shutil.which("yt-dlp")
     if p:
         return ToolPath(path=p, source="PATH")
+
 
     base = _app_base_dir()
     tag = _platform_tag()
@@ -390,7 +495,7 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLMP3 - v2.8.1")
+        self.title("KLMP3 - v2.8.2")
         self.geometry("820x620")
         self.minsize(780, 560)
 
@@ -813,18 +918,65 @@ class App(tk.Tk):
         ttk.Label(self.w_wav, text="WAV = non compressé (16-bit), pas de réglage.").grid(row=0, column=0, sticky="w")
 
         # Keep intermediate
-        row_keep = ttk.Frame(frm_opts)
-        row_keep.pack(fill="x", padx=10, pady=(2, 8))
+        row_keep = ttk.Frame(frm_adv)
+        row_keep.grid(row=2, column=0, sticky="w", padx=10, pady=(0, 8))
+
         ttk.Checkbutton(
             row_keep,
             text="Conserver le fichier intermédiaire (utile pour debug)",
             variable=self.keep_intermediate_var
         ).pack(side="left")
 
+        # --- Mise à jour yt-dlp (pour l'utilisateur) ---
+        frm_updates = ttk.LabelFrame(parent, text="Mise à jour")
+        frm_updates.pack(fill="x", padx=10, pady=(0, 8))
+
+        row_up = ttk.Frame(frm_updates)
+        row_up.pack(fill="x", padx=10, pady=(8, 8))
+
+        ttk.Button(
+            row_up,
+            text="Mettre à jour yt-dlp",
+            command=self.update_ytdlp_for_user
+        ).pack(side="left")
+
+        ttk.Label(
+            row_up,
+            text="(Télécharge la dernière version officielle et l'installe dans un dossier utilisateur.)"
+        ).pack(side="left", padx=(10, 0))
+
+
         # --- Cookies YouTube (optionnel) ---
 
 
         ttk.Frame(parent).pack(fill="both", expand=True)
+        
+    def update_ytdlp_for_user(self):
+        """Met à jour yt-dlp pour l'utilisateur (binaire) dans un dossier écrivable."""
+        if getattr(self, "_ytdlp_update_running", False):
+            self.log("ℹ️ Une mise à jour yt-dlp est déjà en cours.")
+            return
+
+        def worker():
+            self._ytdlp_update_running = True
+            try:
+                self.log("🧩 Mise à jour yt-dlp (utilisateur)…")
+                name = "yt-dlp.exe" if sys.platform.startswith("win") else "yt-dlp"
+                target = _user_tool_path(name)
+
+                ok = download_latest_ytdlp_to(target, self.log)
+                if ok:
+                    # Recharge le chemin (et source) immédiatement
+                    self.ytdlp = find_ytdlp_tools_first()
+                    self.ytdlp_path = self.ytdlp.path
+                    self.log("✅ Mise à jour terminée. Le nouvel yt-dlp sera utilisé immédiatement.")
+                else:
+                    self.log("❌ Mise à jour échouée.")
+            finally:
+                self._ytdlp_update_running = False
+
+        threading.Thread(target=worker, daemon=True).start()
+    
 
     # -------------- Theme system --------------
 

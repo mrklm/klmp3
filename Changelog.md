@@ -5,6 +5,15 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.8.2] – 2026-01-27
+
+Ajouté
+
+ - Bouton pour que l'utilisateur puisse mettre à jour YT-DLP dans l'onglet options
+   (téléchargé dans un répertoire "tools" utilisateur)
+
+---   
+
 [2.8.1] – 2026-01-27
 
 Modifié
