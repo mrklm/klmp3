@@ -5,7 +5,16 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
-[2.7.1] – 2026-01-26
+[2.8] – 2026-01-27
+
+Ajouté
+
+ - Onglet Coversion: possibilité de convertir des fichiers dans les formats MP3 - FLAC - OGG - M4A - OPUS - WAV
+   options pour conserver ou non les métadonnées et le(s) fichier(s) source
+
+---
+
+[2.7.1] – 2026-01-27
 
 Modifié
 
