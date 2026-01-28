@@ -60,6 +60,8 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 
 🦏 Détection robuste de ffmpeg / ffprobe (PATH ou tools/)
 
+⚡️ Fonction de mise à jour de YT-DLP (outil de téléchargement)
+
 🗒️ Journal d’exécution intégré
 
 ---
