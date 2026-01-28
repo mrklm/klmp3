@@ -3,6 +3,16 @@ Changelog
 Toutes les modifications notables de ce projet sont documentées dans ce fichier.
 Le format est inspiré de Keep a Changelog et le versionnement suit une logique sémantique pragmatique.
 
+
+---
+
+[2.8.3] – 2026-01-28
+
+ Modifié
+
+  - YouTube (Windows) — Correction d’un bug empêchant le téléchargement de vidéos lorsque 
+    le client yt-dlp tv_embedded était forcé (erreur 152-18, VPN).
+
 ---
 
 [2.8.2] – 2026-01-27

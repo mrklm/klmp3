@@ -495,7 +495,7 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLMP3 - v2.8.3")
+        self.title("KLMP3 - v2.8.4")
         self.geometry("820x620")
         self.minsize(780, 560)
 
@@ -1663,11 +1663,11 @@ class App(tk.Tk):
         t0 = time.time()  # repère temporel pour retrouver tous les fichiers (playlist)
 
         # YouTube : sur Windows on peut préférer le mode binaire (cookies/JS).
-        # Sur macOS/Linux, le module yt_dlp + certifi fonctionne très bien (Option 1).
-        if platform == "youtube" and sys.platform.startswith("win"):
+        # Sous Windows : en venv, on préfère le module (plus souple).
+        # En app packagée (PyInstaller), on force le binaire pour éviter les effets de bord.
+        frozen = getattr(sys, "frozen", False)
+        if platform == "youtube" and sys.platform.startswith("win") and frozen:
             self.ytdlp_mode = "binary"
-
-
 
         # lazy resolve yt-dlp path when switching to binary at runtime
         if self.ytdlp_mode == "binary" and not getattr(self, "ytdlp_path", None):
@@ -1857,10 +1857,13 @@ class App(tk.Tk):
                 cmd += ["--no-playlist"]
             # Cookies/JS runtime : pour YouTube, en single OU playlist
             if ("youtube.com" in url) or ("youtu.be" in url):
-                cmd += ["--cookies-from-browser", "firefox"]
-                self.log("🍪 Cookies YouTube : lecture depuis le navigateur (Firefox)")
-                # Workaround SABR : changer de client
-                cmd += ["--extractor-args", "youtube:player_client=tv_embedded"]
+                token = (self.yt_browser_token_var.get().strip() if getattr(self, "yt_browser_token_var", None) else "") or "firefox"
+                label = YTB_BROWSER_TOKEN_TO_LABEL.get(token, token)
+                cmd += ["--cookies-from-browser", token]
+                self.log(f"🍪 Cookies YouTube : lecture depuis le navigateur ({label})")
+
+                # (IMPORTANT) Ne pas forcer player_client=tv_embedded : peut déclencher "unavailable" sur certains réseaux/VPN
+
 
 
             if getattr(self, "deno_path", None):
