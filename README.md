@@ -15,6 +15,7 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 ![Fenêtre options](screenshots/KLmp3.png)
 ![Fenêtre general](screenshots/general.png)
 ![Fenêtre options](screenshots/options.png)
+![Fenêtre conversions](screenshots/convert.png)
 ![Fenêtre métadonnées](screenshots/meta.png)
 ![Fenêtre aide](screenshots/aide.png)
 
@@ -28,10 +29,10 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
   - [KLMP3-2.6.2-linux-x86_64.tar.gz](https://github.com/mrklm/klmp3/releases)
 
 - 🍎 **macOS**
-  - [KLMP3-2.6.2-macOS-x86_64.dmg](https://github.com/mrklm/klmp3/releases)
+  - [KLMP3-2.8.2-macOS-x86_64.dmg](https://github.com/mrklm/klmp3/releases)
 
 - 🪟 **Windows**  
-  - [KLMP3-v2.6.2-windows-x86_64.zip](https://github.com/mrklm/klmp3/releases)
+  - [KLMP3-v2.8.2-windows-x86_64.zip](https://github.com/mrklm/klmp3/releases)
 
 ---         
 
@@ -41,7 +42,7 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 
 📋️ File d’attente jusqu’à 10 URLs
 
-📟️ Conversion au choix en MP3, M4A, OPUS, FLAC, OGG, WAV
+📟️ Conversion des imports au choix en MP3, M4A, OPUS, FLAC, OGG, WAV
 
 🗃️ Choix de telechargement: un fichier ou playlist entière
 
@@ -49,9 +50,11 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 
 📁 Dossier de sortie automatique par date --> ~/klmp3/AA/MM/JJ/
 
-🗂️ Sous dossier automatique pour les playlist
+🗂️ Sous dossier automatique pour les playlist 
 
-🏳️‍🌈 Thèmes variiés: sombres, clairs et rigolos.
+🐚 Onglet de conversion de fichiers 
+
+🏳️‍🌈 Thèmes variés: sombres, clairs et rigolos.
 
 📺️ Interface graphique légère (Tkinter pur)
 
