@@ -374,8 +374,8 @@ def find_deno_tools_first() -> ToolPath:
     return ToolPath(path=None, source="MISSING")
 def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event) -> int:
     """Run a subprocess, stream stdout+stderr line by line to on_line()."""
-    proc = subprocess.Popen(
-        cmd,
+
+    popen_kwargs = dict(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -383,6 +383,25 @@ def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event) -> int:
         errors="replace",
         bufsize=1,
     )
+
+    # Windows : empêcher l'apparition d'une console (PowerShell/Terminal) pour yt-dlp/ffmpeg.
+    if sys.platform.startswith("win"):
+        try:
+            popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+        except Exception:
+            # Fallback si la constante n'existe pas (rare)
+            popen_kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+
+        try:
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = 0  # SW_HIDE
+            popen_kwargs["startupinfo"] = si
+        except Exception:
+            pass
+
+    proc = subprocess.Popen(cmd, **popen_kwargs)
+
     try:
         assert proc.stdout is not None
         for line in proc.stdout:
@@ -400,6 +419,7 @@ def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event) -> int:
                 proc.stdout.close()
         except Exception:
             pass
+
 
 
 def default_outdir() -> str:
@@ -495,7 +515,7 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLMP3 - v2.8.4")
+        self.title("KLMP3 - v2.8.5")
         self.geometry("820x620")
         self.minsize(780, 560)
 

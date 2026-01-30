@@ -4,6 +4,16 @@ Toutes les modifications notables de ce projet sont documentées dans ce fichier
 Le format est inspiré de Keep a Changelog et le versionnement suit une logique sémantique pragmatique.
 
 
+
+---
+
+[2.8.3] – 2026-01-28
+
+ Ajouté
+
+ - Mise en place de sous-processus en mode “no console” afin d'éviter les fenêtres fantomes lors
+   de l'éxécution du programme sous windows.
+
 ---
 
 [2.8.3] – 2026-01-28
