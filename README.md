@@ -40,8 +40,6 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 
 🪠 Extraction audio YouTube et Twitch VOD
 
-📋️ File d’attente jusqu’à 10 URLs
-
 📟️ Conversion des imports au choix en MP3, M4A, OPUS, FLAC, OGG, WAV
 
 🗃️ Choix de telechargement: un fichier ou playlist entière
