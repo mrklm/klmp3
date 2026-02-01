@@ -7,6 +7,14 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.9] – 2026-02-01
+
+Modifié
+
+ - Ré organisation de l'onglet conversion
+   suppression du journal --> infos vers l'ongelt général
+   barre de progression comme dans l'onglet métadonnées 
+
 ---
 
 [2.8.9] – 2026-02-01
