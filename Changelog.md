@@ -7,7 +7,21 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
-[2.8.3] – 2026-01-28
+[2.8.6] – 2026-02-01
+
+Ajouté
+
+ - Fonction de normalisation (pas encore raccordée à l'interface graphique)
+
+Modifié
+
+ - Boutons multi URL (+/-) enlevés 
+ - Boutons "Coller" / "Effacer" placés de chaque coté de l'URL
+
+
+ ---
+
+[2.8.5] – 2026-01-28
 
  Ajouté
 
@@ -18,7 +32,7 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 [2.8.3] – 2026-01-28
 
- Modifié
+Modifié
 
   - YouTube (Windows) — Correction d’un bug empêchant le téléchargement de vidéos lorsque 
     le client yt-dlp tv_embedded était forcé (erreur 152-18, VPN).

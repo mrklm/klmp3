@@ -669,7 +669,7 @@ class App(tk.Tk):
 
         ttk.Label(frm_urls, text="⬇️ Copier l'URL ici :", anchor="center").grid(row=0, column=0, columnspan=3, sticky="ew")
 
-        # Ligne URL : [Coller/Couper] | [URL(s)] | [+/-]
+        # Ligne URL : [Coller] | [URL(s)] | [Effacer]
 
         frm_actions = ttk.Frame(frm_urls)
         frm_actions.grid(row=1, column=0, sticky="ns", padx=(0, 8))
@@ -678,20 +678,14 @@ class App(tk.Tk):
         self.btn_paste = ttk.Button(frm_actions, text="Coller", command=self.paste_urls, width=8)
         self.btn_paste.grid(row=0, column=0, sticky="ew")
 
-        self.btn_cut = ttk.Button(frm_actions, text="Couper", command=self.cut_url, width=8)
-        self.btn_cut.grid(row=1, column=0, sticky="ew", pady=(6, 0))
-
         self.frm_url_entries = ttk.Frame(frm_urls)
         self.frm_url_entries.grid(row=1, column=1, sticky="ew")
+        
+        frm_clear = ttk.Frame(frm_urls)
+        frm_clear.grid(row=1, column=2, sticky="ns", padx=(8, 0))
 
-        frm_pm = ttk.Frame(frm_urls)
-        frm_pm.grid(row=1, column=2, sticky="ns", padx=(8, 0))
-
-        self.btn_add = ttk.Button(frm_pm, text="+", width=3, command=self.add_url_row)
-        self.btn_add.grid(row=0, column=0, sticky="ew")
-
-        self.btn_remove = ttk.Button(frm_pm, text="-", width=3, command=self.remove_url_row)
-        self.btn_remove.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+        self.btn_clear = ttk.Button(frm_clear, text="Effacer", command=self.cut_url, width=8)
+        self.btn_clear.grid(row=0, column=0, sticky="ew")
 
         frm_urls.columnconfigure(1, weight=1)
 
@@ -1144,8 +1138,16 @@ class App(tk.Tk):
         self.frm_url_entries.columnconfigure(0, weight=1)
     def _refresh_url_buttons(self):
         n = len(self.url_vars)
+
+        # Les boutons + / - ont été retirés de l'UI.
+        # On garde la logique multi-lignes (paste_urls peut encore en créer),
+        # mais on ne tente plus de piloter des boutons inexistants.
+        if not hasattr(self, "btn_add") or not hasattr(self, "btn_remove"):
+            return
+
         self.btn_add.configure(state=("normal" if n < MAX_URLS else "disabled"))
         self.btn_remove.configure(state=("normal" if n > 1 else "disabled"))
+
 
     def add_url_row(self):
         if len(self.url_vars) >= MAX_URLS:
@@ -2018,57 +2020,221 @@ class App(tk.Tk):
 
         return False, f"ffmpeg a échoué (code {rc})."
     
-    def _normalize_playlist_double_numbering(self, path: str) -> str:
-        
-        """
-        Corrige les titres de playlist déjà numérotés du style :
-        '011 - 11 - Titre.ext'  -> '011 - Titre.ext'
-        """
+    def _run_subprocess_collect(self, cmd: list[str]) -> tuple[int, str]:
+        """Exécute une commande et collecte la sortie (stdout+stderr fusionnés)."""
+        popen_kwargs = dict(
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+
+        if sys.platform.startswith("win"):
+            try:
+                popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW  # type: ignore[attr-defined]
+            except Exception:
+                popen_kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+            try:
+                si = subprocess.STARTUPINFO()
+                si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                si.wShowWindow = 0
+                popen_kwargs["startupinfo"] = si
+            except Exception:
+                pass
+
+        proc = subprocess.Popen(cmd, **popen_kwargs)
+
+        out_lines: list[str] = []
         try:
-            folder = os.path.dirname(path)
-            name = os.path.basename(path)
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                if self.stop_flag.is_set():
+                    try:
+                        proc.terminate()
+                    except Exception:
+                        pass
+                    return 130, "\n".join(out_lines)
+                s = line.rstrip("\n")
+                out_lines.append(s)
+                self.log(s)
+            return proc.wait(), "\n".join(out_lines)
+        finally:
+            try:
+                if proc.stdout:
+                    proc.stdout.close()
+            except Exception:
+                pass
 
-            m = re.match(r"^(\d{2,3})\s*-\s*(\d{1,3})\s*-\s*(.+)$", name)
+    def _get_convert_params(self, in_path: str, fmt: str) -> tuple[str, str, list[str]]:
+        """Retourne (out_path, codec, args) selon le format cible."""
+        base_name, _ext = os.path.splitext(in_path)
 
-            if not m:
-                return path
+        if fmt == "mp3":
+            out_path = base_name + ".mp3"
+            codec = "libmp3lame"
+            args = ["-q:a", self.mp3_quality_var.get().strip()]
 
-            a3 = m.group(1)
-            b = m.group(2)
-            rest = m.group(3)
+        elif fmt == "m4a":
+            out_path = base_name + ".m4a"
+            codec = "aac_at" if (sys.platform == "darwin" and self.has_aac_at) else "aac"
+            bitrate = self.aac_bitrate_var.get().strip()
+            args = ["-b:a", bitrate]
 
-            if int(a3) != int(b):
-                return path
+        elif fmt == "opus":
+            out_path = base_name + ".opus"
+            codec = "libopus"
+            bitrate = self.opus_bitrate_var.get().strip()
+            args = ["-b:a", bitrate]
 
-            new_name = f"{a3} - {rest}"
-            new_path = os.path.join(folder, new_name)
+        elif fmt == "flac":
+            out_path = base_name + ".flac"
+            codec = "flac"
+            level = self.flac_level_var.get().strip()
+            args = ["-compression_level", level]
 
-            if os.path.normcase(new_path) == os.path.normcase(path):
-                return path
+        elif fmt == "ogg":
+            out_path = base_name + ".ogg"
+            codec = "libvorbis"
+            q = self.vorbis_quality_var.get().strip()
+            args = ["-q:a", q]
 
-            if os.path.exists(new_path):
-                base, ext = os.path.splitext(new_name)
-                i = 2
-                while True:
-                    candidate = os.path.join(folder, f"{base} ({i}){ext}")
-                    if not os.path.exists(candidate):
-                        new_path = candidate
-                        break
-                    i += 1
+        elif fmt == "wav":
+            out_path = base_name + ".wav"
+            codec = "pcm_s16le"
+            args = []
 
-            os.rename(path, new_path)
-            return new_path
+        else:
+            raise ValueError(f"Format inconnu : {fmt}")
+
+        return out_path, codec, args
+
+    def normalize_one_pass(
+        self,
+        in_path: str,
+        fmt: str,
+        target_i: float = -16.0,
+        target_tp: float = -1.5,
+        target_lra: float = 11.0,
+    ):
+        """Normalise et convertit en une passe via loudnorm."""
+        try:
+            out_path, codec, args = self._get_convert_params(in_path, fmt)
+        except ValueError as e:
+            return False, str(e)
+
+        af = f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}"
+
+        cmd_ff = [
+            self.ffmpeg_path, "-y",
+            "-i", in_path,
+            "-map", "0:a:0",
+            "-vn",
+            "-af", af,
+            "-c:a", codec,
+            *args,
+            out_path
+        ]
+
+        self.log("🎚️ Normalisation (1 passe) : " + af)
+        self.log("▶️ ffmpeg : " + " ".join(cmd_ff))
+        rc = run_subprocess(cmd_ff, self.log, self.stop_flag)
+
+        if rc == 0 and os.path.isfile(out_path):
+            return True, out_path
+        if rc == 130:
+            return False, "⏹️ Arrêté par l’utilisateur."
+        return False, f"ffmpeg a échoué (code {rc})."
+
+    def _parse_loudnorm_json(self, collected_output: str) -> dict | None:
+        """Extrait le JSON loudnorm depuis la sortie ffmpeg."""
+        m = re.search(r"\{.*\}", collected_output, flags=re.DOTALL)
+        if not m:
+            return None
+        try:
+            return json.loads(m.group(0))
         except Exception:
-            return path
+            return None
+
+    def normalize_two_pass(
+        self,
+        in_path: str,
+        fmt: str,
+        target_i: float = -16.0,
+        target_tp: float = -1.5,
+        target_lra: float = 11.0,
+    ):
+        """Normalise et convertit en deux passes via loudnorm (EBU R128)."""
+        try:
+            out_path, codec, args = self._get_convert_params(in_path, fmt)
+        except ValueError as e:
+            return False, str(e)
+
+        af_measure = f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}:print_format=json"
+        cmd_measure = [
+            self.ffmpeg_path, "-y",
+            "-i", in_path,
+            "-map", "0:a:0",
+            "-vn",
+            "-af", af_measure,
+            "-f", "null",
+            "-"
+        ]
+
+        self.log("🎚️ Normalisation (2 passes) — Pass 1/2 (mesure)")
+        self.log("▶️ ffmpeg : " + " ".join(cmd_measure))
+        rc1, out1 = self._run_subprocess_collect(cmd_measure)
+
+        if rc1 == 130:
+            return False, "⏹️ Arrêté par l’utilisateur."
+        if rc1 != 0:
+            return False, f"ffmpeg (pass 1) a échoué (code {rc1})."
+
+        meas = self._parse_loudnorm_json(out1)
+        if not meas:
+            return False, "Impossible d’extraire les mesures loudnorm (JSON introuvable)."
+
+        try:
+            measured_I = float(meas["input_i"])
+            measured_TP = float(meas["input_tp"])
+            measured_LRA = float(meas["input_lra"])
+            measured_thresh = float(meas["input_thresh"])
+            offset = float(meas["target_offset"])
+        except Exception:
+            return False, "Mesures loudnorm incomplètes ou invalides."
+
+        af_apply = (
+            f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}"
+            f":measured_I={measured_I}:measured_TP={measured_TP}:measured_LRA={measured_LRA}"
+            f":measured_thresh={measured_thresh}:offset={offset}:linear=true:print_format=summary"
+        )
+
+        cmd_apply = [
+            self.ffmpeg_path, "-y",
+            "-i", in_path,
+            "-map", "0:a:0",
+            "-vn",
+            "-af", af_apply,
+            "-c:a", codec,
+            *args,
+            out_path
+        ]
+
+        self.log("🎚️ Normalisation (2 passes) — Pass 2/2 (application)")
+        self.log("▶️ ffmpeg : " + " ".join(cmd_apply))
+        rc2 = run_subprocess(cmd_apply, self.log, self.stop_flag)
+
+        if rc2 == 0 and os.path.isfile(out_path):
+            return True, out_path
+        if rc2 == 130:
+            return False, "⏹️ Arrêté par l’utilisateur."
+        return False, f"ffmpeg (pass 2) a échoué (code {rc2})."
 
     def _safe_remove(self, path: str):
-        # Rien à faire si le fichier n'existe déjà plus
         if not path or not os.path.exists(path):
             return
-
-            
-        # Windows peut garder le fichier verrouillé très brièvement après ffmpeg.
-        for attempt in range(1, 6):  # 5 essais
+        for attempt in range(1, 6):
             try:
                 os.remove(path)
                 self.log("🧹 Intermédiaire supprimé.")
@@ -2087,15 +2253,12 @@ class App(tk.Tk):
             folder = os.path.dirname(downloaded_path)
             base = os.path.basename(downloaded_path)
 
-            # fichier principal/intermédiaire
             self._safe_remove(downloaded_path)
 
-            # variante .part
             part_path = os.path.join(folder, base + ".part")
             if os.path.exists(part_path):
                 self._safe_remove(part_path)
 
-            # fragments HLS (twitch surtout) : 2 styles possibles
             prefix_a = base + ".part-Frag"
             prefix_b = base + "-Frag"
 
@@ -2104,10 +2267,7 @@ class App(tk.Tk):
                     self._safe_remove(os.path.join(folder, name))
         except Exception:
             pass
-
-
-
-
+    
 if __name__ == "__main__":
     app = App()
     app.mainloop()
