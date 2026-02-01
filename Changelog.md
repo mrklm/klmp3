@@ -7,6 +7,14 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.8.8] – 2026-02-02
+
+Modifié
+
+- Option avancée de normalisation dans l'onglet option -> LUFS-TP-LRA
+
+---
+
 [2.8.7] – 2026-02-01
 
 Ajouté

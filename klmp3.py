@@ -79,6 +79,8 @@ DL_MODE_PLAYLIST = "La playlist complète"
 # Normalisation : modes
 NORM_MODE_FAST = "Rapide (1 passe)"
 NORM_MODE_TWO_PASS = "Deux passes (avec analyse)"
+NORM_MODE_PRECISE = "Précis (LUFS / TP / LRA)"
+
 
 
 # Bibli de thèmes (issus de Garage)
@@ -520,7 +522,7 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLMP3 - v2.8.7")
+        self.title("KLMP3 - v2.8.8")
         self.geometry("820x620")
         self.minsize(780, 560)
 
@@ -568,12 +570,15 @@ class App(tk.Tk):
         self.opus_bitrate_var = tk.StringVar(value="128k")        # 64k..192k
         self.vorbis_quality_var = tk.StringVar(value="5")         # 0..10
         self.flac_level_var = tk.StringVar(value="5")             # 0..8
-
-        self.keep_intermediate_var = tk.BooleanVar(value=False)
         
         # Normalisation (audio)
         self.normalize_enabled_var = tk.BooleanVar(value=False)
         self.normalization_mode_var = tk.StringVar(value=NORM_MODE_FAST)
+        # Cibles LUFS / TP / LRA (utilisées uniquement en mode "Précis")
+        self.norm_target_i_var = tk.StringVar(value="-16.0")
+        self.norm_target_tp_var = tk.StringVar(value="-1.5")
+        self.norm_target_lra_var = tk.StringVar(value="11.0")
+
 
 
         # Options → Métadonnées (centralisées)
@@ -848,7 +853,7 @@ class App(tk.Tk):
         row_fmt = ttk.Frame(frm_opts)
         row_fmt.pack(fill="x", padx=10, pady=(8, 4))
 
-        ttk.Label(row_fmt, text="Format audio :").pack(side="left")
+        ttk.Label(row_fmt, text="Format :").pack(side="left")
 
         self.cb_format = ttk.Combobox(
             row_fmt,
@@ -857,7 +862,14 @@ class App(tk.Tk):
             values=[FORMAT_LABELS[k] for k in FORMAT_KEYS_IN_ORDER]
         )
         self.cb_format.pack(side="left", padx=(10, 0))
+        
+        ttk.Label(row_fmt, text="").pack(side="left", padx=(16, 6))
 
+        # Holder qui affiche 1 seul réglage qualité selon le format
+        self.quality_holder = ttk.Frame(row_fmt)
+        self.quality_holder.pack(side="left")
+
+        
         # Synchronise combobox UI <-> var interne
         # On stocke la clé interne dans audio_format_var, mais on affiche un label.
         self._format_label_to_key = {FORMAT_LABELS[k]: k for k in FORMAT_KEYS_IN_ORDER}
@@ -866,22 +878,9 @@ class App(tk.Tk):
 
         self.cb_format.bind("<<ComboboxSelected>>", self._on_format_change)
 
-        # --- Bloc Réglage avancé (adaptatif) ---
-        frm_adv = ttk.LabelFrame(parent, text="Réglage avancé")
-        frm_adv.pack(fill="x", padx=10, pady=(0, 8))
-
-        self.adv_desc = ttk.Label(frm_adv, text="")
-        self.adv_desc.grid(row=0, column=0, sticky="w", padx=10, pady=(8, 2))
-
-        self.adv_holder = ttk.Frame(frm_adv)
-        self.adv_holder.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 8))
-        frm_adv.columnconfigure(0, weight=1)
-        self.adv_holder.columnconfigure(0, weight=0)
-        self.adv_holder.columnconfigure(1, weight=1)
-
         # Widgets avancés (un par format) : on affiche/cache selon le format
         # MP3
-        self.w_mp3 = ttk.Frame(self.adv_holder)
+        self.w_mp3 = ttk.Frame(self.quality_holder)
         ttk.Label(self.w_mp3, text="Qualité MP3 (VBR) :").grid(row=0, column=0, sticky="w")
         self.cb_mp3q = ttk.Combobox(
             self.w_mp3,
@@ -894,7 +893,7 @@ class App(tk.Tk):
         ttk.Label(self.w_mp3, text="(0 = meilleure qualité, 9 = plus léger)").grid(row=0, column=2, sticky="w", padx=(10, 0))
 
         # AAC
-        self.w_aac = ttk.Frame(self.adv_holder)
+        self.w_aac = ttk.Frame(self.quality_holder)
         ttk.Label(self.w_aac, text="Bitrate AAC :").grid(row=0, column=0, sticky="w")
         self.cb_aac = ttk.Combobox(
             self.w_aac,
@@ -907,7 +906,7 @@ class App(tk.Tk):
         ttk.Label(self.w_aac, text="(recommandé : 192k)").grid(row=0, column=2, sticky="w", padx=(10, 0))
 
         # OPUS
-        self.w_opus = ttk.Frame(self.adv_holder)
+        self.w_opus = ttk.Frame(self.quality_holder)
         ttk.Label(self.w_opus, text="Bitrate OPUS :").grid(row=0, column=0, sticky="w")
         self.cb_opus = ttk.Combobox(
             self.w_opus,
@@ -920,7 +919,7 @@ class App(tk.Tk):
         ttk.Label(self.w_opus, text="(recommandé : 128k)").grid(row=0, column=2, sticky="w", padx=(10, 0))
 
         # OGG Vorbis
-        self.w_ogg = ttk.Frame(self.adv_holder)
+        self.w_ogg = ttk.Frame(self.quality_holder)
         ttk.Label(self.w_ogg, text="Qualité OGG (Vorbis) :").grid(row=0, column=0, sticky="w")
         self.cb_ogg = ttk.Combobox(
             self.w_ogg,
@@ -933,7 +932,7 @@ class App(tk.Tk):
         ttk.Label(self.w_ogg, text="(0 = plus léger, 10 = meilleure qualité)").grid(row=0, column=2, sticky="w", padx=(10, 0))
 
         # FLAC
-        self.w_flac = ttk.Frame(self.adv_holder)
+        self.w_flac = ttk.Frame(self.quality_holder)
         ttk.Label(self.w_flac, text="Compression FLAC :").grid(row=0, column=0, sticky="w")
         self.cb_flac = ttk.Combobox(
             self.w_flac,
@@ -946,25 +945,54 @@ class App(tk.Tk):
         ttk.Label(self.w_flac, text="(impacte la taille/CPU, pas la qualité)").grid(row=0, column=2, sticky="w", padx=(10, 0))
 
         # WAV
-        self.w_wav = ttk.Frame(self.adv_holder)
+        self.w_wav = ttk.Frame(self.quality_holder)
         ttk.Label(self.w_wav, text="WAV = non compressé (16-bit), pas de réglage.").grid(row=0, column=0, sticky="w")
 
-        # Normalisation
-        row_norm = ttk.Frame(frm_adv)
-        row_norm.grid(row=2, column=0, sticky="w", padx=10, pady=(0, 8))
+        # --- Réglages avancés : Normalisation ---
+        frm_norm = ttk.LabelFrame(parent, text="Réglages avancés")
+        frm_norm.pack(fill="x", padx=10, pady=(0, 8))
+
+        row_norm = ttk.Frame(frm_norm)
+        row_norm.pack(fill="x", padx=10, pady=(8, 4))
 
         ttk.Label(row_norm, text="Normalisation :").pack(side="left")
 
         self.cb_normalization_mode = ttk.Combobox(
             row_norm,
             textvariable=self.normalization_mode_var,
-            values=[NORM_MODE_FAST, NORM_MODE_TWO_PASS],
+            values=[NORM_MODE_FAST, NORM_MODE_TWO_PASS, NORM_MODE_PRECISE],
             state="readonly",
             width=26
         )
         self.cb_normalization_mode.pack(side="left", padx=(10, 0))
 
         ttk.Label(row_norm, text="(réglage utilisé si 'Normaliser' est coché)").pack(side="left", padx=(10, 0))
+
+        row_norm_precise = ttk.Frame(frm_norm)
+        row_norm_precise.pack(fill="x", padx=10, pady=(0, 8))
+
+        ttk.Label(row_norm_precise, text="LUFS :").pack(side="left")
+        self.spin_lufs = ttk.Spinbox(row_norm_precise, textvariable=self.norm_target_i_var, from_=-30.0, to=-5.0, increment=0.5, width=6)
+        self.spin_lufs.pack(side="left", padx=(6, 16))
+
+        ttk.Label(row_norm_precise, text="TP :").pack(side="left")
+        self.spin_tp = ttk.Spinbox(row_norm_precise, textvariable=self.norm_target_tp_var, from_=-6.0, to=0.0, increment=0.1, width=6)
+        self.spin_tp.pack(side="left", padx=(6, 16))
+
+        ttk.Label(row_norm_precise, text="LRA :").pack(side="left")
+        self.spin_lra = ttk.Spinbox(row_norm_precise, textvariable=self.norm_target_lra_var, from_=1, to=20, increment=1, width=5)
+        self.spin_lra.pack(side="left", padx=(6, 0))
+
+        def _update_norm_precise_visibility(*_):
+            visible = (self.normalization_mode_var.get() == NORM_MODE_PRECISE)
+            if visible:
+                row_norm_precise.pack(fill="x", padx=10, pady=(0, 8))
+            else:
+                row_norm_precise.pack_forget()
+
+        self.normalization_mode_var.trace_add("write", _update_norm_precise_visibility)
+        _update_norm_precise_visibility()
+
 
         
         # --- Options → Métadonnées (auto) ---
@@ -1121,31 +1149,24 @@ class App(tk.Tk):
     def _update_advanced_controls(self):
         fmt = self.audio_format_var.get().strip().lower()
 
-        # cache tout
+        # cache tout (on est maintenant sur pack, plus sur grid)
         for w in (self.w_mp3, self.w_aac, self.w_opus, self.w_flac, self.w_ogg, self.w_wav):
-            w.grid_forget()
+            w.pack_forget()
 
         if fmt == "mp3":
-            self.adv_desc.configure(text="MP3 : réglage VBR (qualité).")
-            self.w_mp3.grid(row=0, column=0, sticky="w")
+            self.w_mp3.pack(side="left")
         elif fmt == "m4a":
-            self.adv_desc.configure(text="M4A (AAC) : réglage du bitrate.")
-            self.w_aac.grid(row=0, column=0, sticky="w")
+            self.w_aac.pack(side="left")
         elif fmt == "opus":
-            self.adv_desc.configure(text="OPUS : réglage du bitrate (excellent pour la voix).")
-            self.w_opus.grid(row=0, column=0, sticky="w")
+            self.w_opus.pack(side="left")
         elif fmt == "flac":
-            self.adv_desc.configure(text="FLAC : compression sans perte (niveau).")
-            self.w_flac.grid(row=0, column=0, sticky="w")
+            self.w_flac.pack(side="left")
         elif fmt == "ogg":
-            self.adv_desc.configure(text="OGG (Vorbis) : réglage de la qualité.")
-            self.w_ogg.grid(row=0, column=0, sticky="w")
+            self.w_ogg.pack(side="left")
         elif fmt == "wav":
-            self.adv_desc.configure(text="WAV : sortie brute (non compressée).")
-            self.w_wav.grid(row=0, column=0, sticky="w")
+            self.w_wav.pack(side="left")
         else:
-            self.adv_desc.configure(text="Réglage avancé :")
-            self.w_mp3.grid(row=0, column=0, sticky="w")
+            self.w_mp3.pack(side="left")
 
     # ---------------- URL rows ----------------
 
@@ -1561,7 +1582,6 @@ class App(tk.Tk):
     def _worker_queue(self, urls: list[str], outdir: str, dl_mode: str, limit_on: bool, limit_n: int):
         try:
             fmt = self.audio_format_var.get().strip().lower()
-            keep_inter = self.keep_intermediate_var.get()
 
             for idx, url in enumerate(urls, start=1):
                 if self.stop_flag.is_set():
@@ -1574,10 +1594,10 @@ class App(tk.Tk):
 
                 if is_twitch(url):
                     self.log("🎯 Plateforme détectée : Twitch (VOD) — téléchargement Audio_Only")
-                    ok, final_msg = self._pipeline_download_and_convert(url, outdir, fmt, keep_inter, platform="twitch", dl_mode=dl_mode, limit_on=limit_on, limit_n=limit_n)
+                    ok, final_msg = self._pipeline_download_and_convert(url, outdir, fmt, platform="twitch", dl_mode=dl_mode, limit_on=limit_on, limit_n=limit_n)
                 else:
                     self.log("🎯 Plateforme détectée : YouTube (ou autre) — téléchargement bestaudio")
-                    ok, final_msg = self._pipeline_download_and_convert(url, outdir, fmt, keep_inter, platform="youtube", dl_mode=dl_mode, limit_on=limit_on, limit_n=limit_n)
+                    ok, final_msg = self._pipeline_download_and_convert(url, outdir, fmt, platform="youtube", dl_mode=dl_mode, limit_on=limit_on, limit_n=limit_n)
 
                 if not ok:
                     self.after(0, self._finish, False, final_msg)
@@ -1590,7 +1610,7 @@ class App(tk.Tk):
 
     # -------------- Download + Convert (unifié) --------------
 
-    def _pipeline_download_and_convert(self, url: str, outdir: str, fmt: str, keep_inter: bool, platform: str, dl_mode: str, limit_on: bool, limit_n: int):
+    def _pipeline_download_and_convert(self, url: str, outdir: str, fmt: str, platform: str, dl_mode: str, limit_on: bool, limit_n: int):
         """
         Télécharge un fichier audio (intermédiaire) avec yt-dlp, puis convertit avec ffmpeg.
         """
@@ -1626,7 +1646,6 @@ class App(tk.Tk):
             dl_mode=dl_mode,
             limit_on=limit_on,
             limit_n=limit_n,
-            keep_inter=keep_inter,
         )
 
         if not ok:
@@ -1671,11 +1690,11 @@ class App(tk.Tk):
             converted += 1
 
 
-            if not keep_inter:
-                self._safe_remove(downloaded_path)
+            # Nettoyage systématique de l'intermédiaire
+            self._safe_remove(downloaded_path)
 
             # Nettoyage des fragments HLS restants (Twitch laisse parfois des .part-FragXXX.part)
-            if platform == "twitch" and not keep_inter:
+            if platform == "twitch":
                 try:
                     folder = os.path.dirname(downloaded_path)
                     base = os.path.basename(downloaded_path)
@@ -1691,6 +1710,7 @@ class App(tk.Tk):
                             self._safe_remove(os.path.join(folder, name))
                 except Exception:
                     pass
+
     
 
         # Résumé lisible de fin
@@ -1704,7 +1724,7 @@ class App(tk.Tk):
 
         return True, "\n".join(msg_lines)
 
-    def _download_audio(self, url: str, outtmpl: str, platform: str, dl_mode: str, limit_on: bool, limit_n: int, keep_inter: bool):
+    def _download_audio(self, url: str, outtmpl: str, platform: str, dl_mode: str, limit_on: bool, limit_n: int):
 
         """
         Retourne (ok, path_ou_message).
@@ -1823,10 +1843,9 @@ class App(tk.Tk):
             # pas les fragments HLS.
             ydl_opts["keep_fragments"] = False
 
-            # Optionnel : évite le fichier principal .part (moins de bazar, mais empêche la reprise)
-            # On le met seulement si on ne debug pas.
-            if not keep_inter:
-                ydl_opts["nopart"] = True
+            # Évite le fichier principal .part (moins de bazar, mais empêche la reprise)
+            ydl_opts["nopart"] = True
+
 
 
             # Playlist : limite éventuelle
@@ -1895,9 +1914,9 @@ class App(tk.Tk):
                 "--no-keep-fragments",
             ]
 
-            # Optionnel : évite le .part principal (mais empêche la reprise). On l'active hors debug.
-            if not keep_inter:
-                cmd += ["--no-part"]
+            # Évite le .part principal (moins de bazar, mais empêche la reprise)
+            cmd += ["--no-part"]
+
 
 
             # Respect du mode choisi (single vs playlist)
