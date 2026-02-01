@@ -218,9 +218,6 @@ def _platform_tag() -> str:
 def _is_executable(path: str) -> bool:
     return os.path.isfile(path) and os.access(path, os.X_OK)
 
-
-
-
 def ytdlp_module_available() -> bool:
     """Retourne True si le module Python yt_dlp est importable.
 
@@ -362,8 +359,6 @@ def find_ytdlp_tools_first() -> ToolPath:
 
     return ToolPath(path=None, source="MISSING")
 
-
-
 def find_deno_tools_first() -> ToolPath:
     """Cherche Deno dans tools/<platform>/ (pas dans le PATH volontairement)."""
     base = _app_base_dir()
@@ -427,8 +422,6 @@ def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event) -> int:
         except Exception:
             pass
 
-
-
 def default_outdir() -> str:
     """Dossier de sortie par défaut.
 
@@ -479,8 +472,6 @@ def default_outdir() -> str:
     stamp = datetime.now().strftime("%y-%m-%d")
     return os.path.join(desktop, f"klmp3-{stamp}")
 
-
-
 def _config_dir() -> str:
     """Dossier de config utilisateur (écrivable), multi-OS."""
     home = os.path.expanduser("~")
@@ -513,7 +504,6 @@ def _save_config(data: dict) -> None:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
-
 
 class App(tk.Tk):
     def __init__(self):
@@ -579,8 +569,6 @@ class App(tk.Tk):
         self.norm_target_tp_var = tk.StringVar(value="-1.5")
         self.norm_target_lra_var = tk.StringVar(value="11.0")
 
-
-
         # Options → Métadonnées (centralisées)
         self.square_cover_var = tk.BooleanVar(value=True)
         self.track_from_filename_var = tk.BooleanVar(value=True)
@@ -608,8 +596,6 @@ class App(tk.Tk):
                 self.ytdlp_mode = "binary"
                 if not self.ytdlp_path:
                     self._startup_msgs.append("❌ Mode packagé : yt-dlp introuvable dans tools/<platform>/")
-
-
 
         # --- Deno ---
         self.deno = find_deno_tools_first()
@@ -659,10 +645,11 @@ class App(tk.Tk):
         self.tab_help = ttk.Frame(self.nb)
 
         self.nb.add(self.tab_general, text="Général")
-        self.nb.add(self.tab_options, text="Options")
-        self.nb.add(self.tab_convert, text="Conversion")  
         self.nb.add(self.tab_tags, text="Métadonnées")
+        self.nb.add(self.tab_convert, text="Conversion")
+        self.nb.add(self.tab_options, text="Options")
         self.nb.add(self.tab_help, text="Aide")
+
 
 
         # Construit l'onglet Conversion (UI + logique) depuis le module séparé
@@ -747,31 +734,58 @@ class App(tk.Tk):
         frm_mid.pack(fill="x", **pad)
 
         ttk.Label(frm_mid, text="Dossier de sortie :").grid(row=0, column=0, sticky="w")
-        self.out_ent = ttk.Entry(frm_mid, textvariable=self.outdir_var)
-        self.out_ent.grid(row=1, column=0, sticky="ew", pady=(4, 0))
 
         btn_browse = ttk.Button(frm_mid, text="Parcourir…", command=self.choose_outdir)
-        btn_browse.grid(row=1, column=1, padx=(8, 0), sticky="ew")
-        frm_mid.columnconfigure(0, weight=1)
+        btn_browse.grid(row=1, column=0, padx=(0, 8), sticky="ew", pady=(4, 0))
+
+        self.out_ent = ttk.Entry(frm_mid, textvariable=self.outdir_var)
+        self.out_ent.grid(row=1, column=1, sticky="ew", pady=(4, 0))
+
+        frm_mid.columnconfigure(0, weight=0)
+        frm_mid.columnconfigure(1, weight=1)
+
 
         # Controls
         frm_ctrl = ttk.Frame(self.tab_general)
         frm_ctrl.pack(fill="x", **pad)
 
-        self.btn_start = ttk.Button(frm_ctrl, text="Démarrer", command=self.start, style="KLM.Big.TButton")
-        self.btn_start.grid(row=0, column=0, sticky="ew")
+        # Ligne de contrôle : Démarrer — Progression — Arrêter
+        frm_ctrl.columnconfigure(0, weight=0)  # Démarrer
+        frm_ctrl.columnconfigure(1, weight=1)  # Progression
+        frm_ctrl.columnconfigure(2, weight=0)  # Arrêter
 
-        self.btn_stop = ttk.Button(frm_ctrl, text="Arrêter", command=self.stop, state="disabled", style="KLM.Big.TButton")
-        self.btn_stop.grid(row=0, column=1, sticky="ew", padx=(10, 0))
+        self.btn_start = ttk.Button(
+            frm_ctrl,
+            text="Démarrer",
+            command=self.start,
+            style="KLM.Big.TButton"
+        )
+        self.btn_start.grid(row=0, column=0, sticky="w")
 
+        self.progress = ttk.Progressbar(
+            frm_ctrl,
+            mode="indeterminate"
+        )
+        self.progress.grid(
+            row=0,
+            column=1,
+            sticky="ew",
+            padx=(14, 14)
+        )
+
+        self.btn_stop = ttk.Button(
+            frm_ctrl,
+            text="Arrêter",
+            command=self.stop,
+            state="disabled",
+            style="KLM.Big.TButton"
+        )
+        self.btn_stop.grid(row=0, column=2, sticky="e")
+
+        # Largeur fixe des boutons (optionnel mais cohérent avec ton style)
         self.btn_start.configure(width=14)
         self.btn_stop.configure(width=14)
 
-        self.progress = ttk.Progressbar(frm_ctrl, mode="indeterminate")
-        self.progress.grid(row=0, column=2, sticky="ew", padx=(14, 0))
-        frm_ctrl.columnconfigure(0, weight=1)
-        frm_ctrl.columnconfigure(1, weight=1)
-        frm_ctrl.columnconfigure(2, weight=2)
 
         # Log
         self.frm_log = ttk.LabelFrame(self.tab_general, text="Journal")

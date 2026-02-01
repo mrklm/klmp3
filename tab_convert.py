@@ -5,10 +5,10 @@ import os
 import threading
 import queue
 import subprocess
+from datetime import datetime
+import json
 import tkinter as tk
 from tkinter import ttk, filedialog
-import re
-import json
 
 
 def _format_size(num_bytes: int) -> str:
@@ -27,12 +27,15 @@ def _format_size(num_bytes: int) -> str:
 
 class ConvertTab(ttk.Frame):
     """
-    Onglet Conversion (fichier(s) -> format audio)
-    - Sélection fichiers (unique ou lot)
+    Onglet Conversion
+    - Sélection fichier(s)
     - Destination
-    - Choix format + qualité (mêmes réglages que l'onglet Options via variables app.*)
-    - Conserver métadonnées (map_metadata)
-    - Supprimer sources après succès
+    - Format + Qualité (côte à côte)
+    - Options: Normaliser + Conserver métadonnées + Supprimer la source
+    - Actions en haut (Convertir — Progress — Stop) sur toute la largeur
+    - Progression :
+        * 1 fichier : % (0..100) via ffmpeg -progress pipe:1 + durée via ffprobe
+        * N fichiers : progression par fichier (0..N)
     """
 
     FORMATS = ["mp3", "m4a", "opus", "flac", "ogg", "wav"]
@@ -41,7 +44,7 @@ class ConvertTab(ttk.Frame):
     AAC_BITRATES = [f"{k}k" for k in (96, 128, 160, 192, 224, 256, 320)]
     OPUS_BITRATES = [f"{k}k" for k in (64, 96, 128, 160, 192)]
     VORBIS_QUALITIES = [str(i) for i in range(0, 11)]              # 0..10
-    FLAC_LEVELS = [str(i) for i in range(0, 13)]                   # 0..12 (large)
+    FLAC_LEVELS = [str(i) for i in range(0, 13)]                   # 0..12
 
     def __init__(self, parent, app):
         super().__init__(parent)
@@ -52,35 +55,44 @@ class ConvertTab(ttk.Frame):
         self._stop_event = threading.Event()
         self._q: "queue.Queue[object]" = queue.Queue()
 
-        self.dest_dir_var = tk.StringVar(value=os.path.expanduser("~"))
+        # Destination par défaut : Bureau/klmp3conversionsAAMMJJ
+        desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+        stamp = datetime.now().strftime("%y%m%d")  # AAMMJJ
+        default_dest = os.path.join(desktop, f"klmp3conversions{stamp}")
+        if not os.path.isdir(desktop):
+            default_dest = os.path.join(os.path.expanduser("~"), f"klmp3conversions{stamp}")
+
+        try:
+            os.makedirs(default_dest, exist_ok=True)
+        except Exception:
+            pass
+
+        self.dest_dir_var = tk.StringVar(value=default_dest)
 
         self.keep_metadata_var = tk.BooleanVar(value=True)
         self.delete_source_var = tk.BooleanVar(value=False)
         self.normalize_var = tk.BooleanVar(value=False)
 
-        # Qualité affichée (utilisée pour mapper les variables app.* selon le format)
-        self.quality_label_var = tk.StringVar(value="Qualité MP3 (VBR)")
-        self.quality_hint_var = tk.StringVar(value="(0 = meilleure qualité, 9 = plus léger)")
-        self.quality_var = tk.StringVar(value=self.app.mp3_quality_var.get())
+        # Qualité affichée (miroir des vars app.* selon format)
+        self.quality_var = tk.StringVar(value="")
+
+        # Progress mode
+        self._single_file_mode = False  # True -> maximum=100 (pourcentage), False -> maximum=N (fichiers)
 
         self._build_ui()
         self._poll_queue()
-
-        # Synchronisation format -> qualité
         self._on_format_changed()
 
     # ---------------- UI ----------------
 
     def _build_ui(self):
-        # Ratio gauche/droite : 1/3 - 2/3
+        # 2 colonnes (gauche / droite) + 2 lignes (Actions / contenu)
         self.columnconfigure(0, weight=1)
         self.columnconfigure(1, weight=2)
+        self.rowconfigure(0, weight=0)
+        self.rowconfigure(1, weight=1)
 
-        # 2 lignes : Actions (haut) + contenu (bas)
-        self.rowconfigure(0, weight=0)   # Actions
-        self.rowconfigure(1, weight=1)   # Contenu
-
-        # ---- Actions (EN HAUT, pleine largeur de l'onglet)
+        # ---- Actions (pleine largeur)
         frm_act = ttk.LabelFrame(self, text="Actions")
         frm_act.grid(row=0, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 6))
         frm_act.columnconfigure(0, weight=1)
@@ -88,7 +100,7 @@ class ConvertTab(ttk.Frame):
         act_inner = ttk.Frame(frm_act)
         act_inner.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
 
-        # colonnes: [spacer] [Convertir] [Progress] [Stop] [spacer]
+        # [spacer] [Convertir] [Progress] [Stop] [spacer]
         act_inner.columnconfigure(0, weight=1)
         act_inner.columnconfigure(1, weight=0)
         act_inner.columnconfigure(2, weight=1)
@@ -98,7 +110,7 @@ class ConvertTab(ttk.Frame):
         self.btn_convert = ttk.Button(act_inner, text="Convertir", command=self._start_convert)
         self.btn_convert.grid(row=0, column=1, sticky="w")
 
-        self.pb = ttk.Progressbar(act_inner, mode="determinate", maximum=1, value=0)
+        self.pb = ttk.Progressbar(act_inner, mode="determinate", maximum=100, value=0)
         self.pb.grid(row=0, column=2, sticky="ew", padx=(12, 12))
         try:
             self.pb.configure(length=260)
@@ -108,71 +120,50 @@ class ConvertTab(ttk.Frame):
         self.btn_stop = ttk.Button(act_inner, text="Stop", command=self._stop_convert, state="disabled")
         self.btn_stop.grid(row=0, column=3, sticky="e")
 
-        # ---- Contenu (gauche/droite) sous Actions
+        # ---- Contenu (gauche/droite)
         left = ttk.Frame(self)
         right = ttk.Frame(self)
         left.grid(row=1, column=0, sticky="nsew", padx=(10, 6), pady=(6, 10))
         right.grid(row=1, column=1, sticky="nsew", padx=(6, 10), pady=(6, 10))
+        left.columnconfigure(0, weight=1)
+        right.columnconfigure(0, weight=1)
 
-
-        # ---- Gauche
+        # ---- Gauche : fichiers
         ttk.Button(left, text="Sélectionnez fichier(s)", command=self._select_files).pack(fill="x")
 
-        # Style Treeview (liste fichiers) : fond noir + texte blanc
         style = ttk.Style(self)
-        style.configure(
-            "Convert.Treeview",
-            background="black",
-            foreground="white",
-            fieldbackground="black",
-        )
-        style.configure(
-            "Convert.Treeview.Heading",
-            background="black",
-            foreground="white",
-        )
-        style.map(
-            "Convert.Treeview",
-            background=[("selected", "gray25")],
-            foreground=[("selected", "white")],
-        )
+        style.configure("Convert.Treeview", background="black", foreground="white", fieldbackground="black")
+        style.configure("Convert.Treeview.Heading", background="black", foreground="white")
+        style.map("Convert.Treeview", background=[("selected", "gray25")], foreground=[("selected", "white")])
 
-        # Boîte fichiers : ajoute "Nom" + baisse la hauteur (~ -1/4)
-        self.tree = ttk.Treeview(left, columns=("name", "ext", "size"), show="headings", height=9, style="Convert.Treeview")
+        self.tree = ttk.Treeview(
+            left,
+            columns=("name", "ext", "size"),
+            show="headings",
+            height=9,
+            style="Convert.Treeview",
+        )
         self.tree.heading("name", text="Nom")
         self.tree.heading("ext", text="Extension")
         self.tree.heading("size", text="Taille")
-
         self.tree.column("name", width=260, anchor="w")
         self.tree.column("ext", width=90, anchor="center")
         self.tree.column("size", width=120, anchor="e")
-
         self.tree.pack(fill="both", expand=True, pady=(8, 8))
 
         btns = ttk.Frame(left)
         btns.pack(fill="x", pady=(0, 8))
-
         btns.columnconfigure(0, weight=1)
         btns.columnconfigure(1, weight=1)
 
-        ttk.Button(
-            btns,
-            text="Retirer sélection",
-            command=self._remove_selected,
-            padding=(8, 1),
-        ).grid(row=0, column=0, sticky="ew")
+        ttk.Button(btns, text="Retirer sélection", command=self._remove_selected, padding=(8, 1)).grid(
+            row=0, column=0, sticky="ew"
+        )
+        ttk.Button(btns, text="Tout retirer", command=self._clear_files, padding=(8, 1)).grid(
+            row=0, column=1, sticky="ew", padx=(8, 0)
+        )
 
-        ttk.Button(
-            btns,
-            text="Tout retirer",
-            command=self._clear_files,
-            padding=(8, 1),
-        ).grid(row=0, column=1, sticky="ew", padx=(8, 0))
-
-        # ---- Droite
-        right.columnconfigure(0, weight=1)
-
-        # Destination (avec bouton + entry)
+        # ---- Droite : destination + format/qualité + options
         row_dest = ttk.Frame(right)
         row_dest.pack(fill="x", pady=(0, 10))
         row_dest.columnconfigure(1, weight=1)
@@ -184,33 +175,32 @@ class ConvertTab(ttk.Frame):
             padding=(8, 1),
         ).grid(row=0, column=0, sticky="w", padx=(0, 8))
 
+        # IMPORTANT: création de l'Entry (sinon AttributeError ent_dest)
         self.ent_dest = ttk.Entry(row_dest, textvariable=self.dest_dir_var)
         self.ent_dest.grid(row=0, column=1, sticky="ew")
 
         frm_fmt = ttk.Frame(right)
         frm_fmt.pack(fill="x")
 
-        # Type de conversion + Qualité (côte à côte)
         ttk.Label(frm_fmt, text="Type de conversion:").grid(row=0, column=0, sticky="w")
 
         row_fq = ttk.Frame(frm_fmt)
         row_fq.grid(row=1, column=0, sticky="ew", pady=(4, 12))
         row_fq.columnconfigure(0, weight=0)
         row_fq.columnconfigure(1, weight=0)
+        row_fq.columnconfigure(2, weight=0)
 
         self.cmb_format = ttk.Combobox(
             row_fq,
             values=self.FORMATS,
             state="readonly",
-            textvariable=self.app.audio_format_var,  # même variable que l'onglet Options
+            textvariable=self.app.audio_format_var,
             width=10,
         )
         self.cmb_format.grid(row=0, column=0, sticky="w")
         self.cmb_format.bind("<<ComboboxSelected>>", lambda _e: self._on_format_changed())
 
-        ttk.Label(row_fq, text="Par défaut :").grid(
-            row=0, column=1, sticky="w", padx=(16, 6)
-        )
+        ttk.Label(row_fq, text="Par défaut :").grid(row=0, column=1, sticky="w", padx=(16, 6))
 
         self.cmb_quality = ttk.Combobox(
             row_fq,
@@ -221,34 +211,21 @@ class ConvertTab(ttk.Frame):
         self.cmb_quality.grid(row=0, column=2, sticky="w")
         self.cmb_quality.bind("<<ComboboxSelected>>", lambda _e: self._apply_quality_to_app())
 
-        # Normalisation (optionnel) — sous la qualité
-        ttk.Checkbutton(
-            frm_fmt,
-            text="Normaliser",
-            variable=self.normalize_var
-        ).grid(row=2, column=0, sticky="w", pady=(0, 12))
-        
-        ttk.Checkbutton(
-            frm_fmt,
-            text="Conserver les métadonnées",
-            variable=self.keep_metadata_var,
-        ).grid(row=3, column=0, sticky="w")
-
-        ttk.Checkbutton(
-            frm_fmt,
-            text="Supprimer la source après la conversion",
-            variable=self.delete_source_var,
-        ).grid(row=4, column=0, sticky="w", pady=(0, 12))
-
+        ttk.Checkbutton(frm_fmt, text="Normaliser", variable=self.normalize_var).grid(
+            row=2, column=0, sticky="w", pady=(0, 4)
+        )
+        ttk.Checkbutton(frm_fmt, text="Conserver les métadonnées", variable=self.keep_metadata_var).grid(
+            row=3, column=0, sticky="w"
+        )
+        ttk.Checkbutton(frm_fmt, text="Supprimer la source après succès", variable=self.delete_source_var).grid(
+            row=4, column=0, sticky="w", pady=(0, 12)
+        )
 
         self._log("Prêt. Sélectionnez un ou plusieurs fichiers à convertir.")
 
-    # ---------------- Helpers ----------------
+    # ---------------- Logging & queue ----------------
 
     def _log(self, msg: str):
-        """Log côté UI.
-        L'onglet Conversion n'affiche pas de journal dédié : on redirige vers le logger de l'app si présent.
-        """
         log_fn = getattr(self.app, "log", None)
         if callable(log_fn):
             try:
@@ -274,10 +251,13 @@ class ConvertTab(ttk.Frame):
         try:
             while True:
                 item = self._q.get_nowait()
+
                 if isinstance(item, dict):
                     t = item.get("type")
+
                     if t == "log":
                         self._log(str(item.get("msg", "")))
+
                     elif t == "progress":
                         if hasattr(self, "pb"):
                             maximum = item.get("maximum")
@@ -290,13 +270,16 @@ class ConvertTab(ttk.Frame):
                                 self.pb.configure(value=int(item.get("value", 0)))
                             except Exception:
                                 pass
+
                     elif t == "done":
                         self._set_running(False)
+
                 else:
-                    # Compat (anciens messages string)
                     self._log(str(item))
+
         except queue.Empty:
             pass
+
         self.after(120, self._poll_queue)
 
     def _set_running(self, running: bool):
@@ -309,10 +292,13 @@ class ConvertTab(ttk.Frame):
         except Exception:
             pass
         try:
-            if running:
-                self.pb.configure(value=0)
+            if not running:
+                # Fin -> stop éventuel, reset visuel
+                self.pb.stop()
         except Exception:
             pass
+
+    # ---------------- Files UI ----------------
 
     def _select_files(self):
         paths = filedialog.askopenfilenames(
@@ -357,14 +343,6 @@ class ConvertTab(ttk.Frame):
             self._log("Aucune sélection.")
             return
 
-        removed = 0
-        # Supprime par index dans la liste _files : on map la selection aux lignes affichées
-        visible = []
-        for iid in self.tree.get_children():
-            vals = self.tree.item(iid, "values")
-            if vals:
-                visible.append(vals[0])  # name
-
         to_remove_names = set()
         for iid in sel:
             vals = self.tree.item(iid, "values")
@@ -372,6 +350,7 @@ class ConvertTab(ttk.Frame):
                 to_remove_names.add(vals[0])
 
         new_files = []
+        removed = 0
         for p in self._files:
             if os.path.basename(p) in to_remove_names:
                 removed += 1
@@ -391,50 +370,37 @@ class ConvertTab(ttk.Frame):
     def _select_dest(self):
         d = filedialog.askdirectory(title="Sélectionnez le dossier de destination")
         if d:
-            self.dest_dir_var.set(os.path.normpath(d))
+            d = os.path.normpath(d)
+            self.dest_dir_var.set(d)
+            try:
+                os.makedirs(d, exist_ok=True)
+            except Exception:
+                pass
+
+    # ---------------- Format/Quality mapping ----------------
 
     def _on_format_changed(self):
         fmt = (self.app.audio_format_var.get() or "mp3").strip().lower()
 
         if fmt == "mp3":
-            self.quality_label_var.set("Qualité MP3 (VBR)")
-            self.quality_hint_var.set("(0 = meilleure qualité, 9 = plus léger)")
             self.cmb_quality.configure(values=self.MP3_QUALITIES)
-            self.quality_var.set(self.app.mp3_quality_var.get())
-
+            self.quality_var.set(getattr(self.app, "mp3_quality_var").get() if hasattr(self.app, "mp3_quality_var") else "5")
         elif fmt == "m4a":
-            self.quality_label_var.set("Bitrate AAC")
-            self.quality_hint_var.set("(recommandé : 192k)")
             self.cmb_quality.configure(values=self.AAC_BITRATES)
-            self.quality_var.set(self.app.aac_bitrate_var.get())
-
+            self.quality_var.set(getattr(self.app, "aac_bitrate_var").get() if hasattr(self.app, "aac_bitrate_var") else "192k")
         elif fmt == "opus":
-            self.quality_label_var.set("Bitrate OPUS")
-            self.quality_hint_var.set("(recommandé : 128k)")
             self.cmb_quality.configure(values=self.OPUS_BITRATES)
-            self.quality_var.set(self.app.opus_bitrate_var.get())
-
+            self.quality_var.set(getattr(self.app, "opus_bitrate_var").get() if hasattr(self.app, "opus_bitrate_var") else "128k")
         elif fmt == "flac":
-            self.quality_label_var.set("Compression FLAC")
-            self.quality_hint_var.set("(impacte la taille/CPU, pas la qualité)")
             self.cmb_quality.configure(values=self.FLAC_LEVELS)
-            self.quality_var.set(self.app.flac_level_var.get())
-
+            self.quality_var.set(getattr(self.app, "flac_level_var").get() if hasattr(self.app, "flac_level_var") else "5")
         elif fmt == "ogg":
-            self.quality_label_var.set("Qualité OGG (Vorbis)")
-            self.quality_hint_var.set("(0 = plus léger, 10 = meilleure qualité)")
             self.cmb_quality.configure(values=self.VORBIS_QUALITIES)
-            self.quality_var.set(self.app.vorbis_quality_var.get())
-
+            self.quality_var.set(getattr(self.app, "vorbis_quality_var").get() if hasattr(self.app, "vorbis_quality_var") else "4")
         elif fmt == "wav":
-            self.quality_label_var.set("WAV")
-            self.quality_hint_var.set("= non compressé (16-bit), pas de réglage.")
             self.cmb_quality.configure(values=["(sans perte)"])
             self.quality_var.set("(sans perte)")
-
         else:
-            self.quality_label_var.set("Qualité")
-            self.quality_hint_var.set("")
             self.cmb_quality.configure(values=[])
             self.quality_var.set("")
 
@@ -444,15 +410,15 @@ class ConvertTab(ttk.Frame):
         fmt = (self.app.audio_format_var.get() or "mp3").strip().lower()
         q = (self.quality_var.get() or "").strip()
 
-        if fmt == "mp3":
+        if fmt == "mp3" and hasattr(self.app, "mp3_quality_var"):
             self.app.mp3_quality_var.set(q)
-        elif fmt == "m4a":
+        elif fmt == "m4a" and hasattr(self.app, "aac_bitrate_var"):
             self.app.aac_bitrate_var.set(q)
-        elif fmt == "opus":
+        elif fmt == "opus" and hasattr(self.app, "opus_bitrate_var"):
             self.app.opus_bitrate_var.set(q)
-        elif fmt == "flac":
+        elif fmt == "flac" and hasattr(self.app, "flac_level_var"):
             self.app.flac_level_var.set(q)
-        elif fmt == "ogg":
+        elif fmt == "ogg" and hasattr(self.app, "vorbis_quality_var"):
             self.app.vorbis_quality_var.set(q)
 
     # ---------------- Run ----------------
@@ -471,19 +437,26 @@ class ConvertTab(ttk.Frame):
             self._log("Dossier de destination invalide.")
             return
 
-        if not getattr(self.app, "ffmpeg_path", None) or not os.path.isfile(self.app.ffmpeg_path):
+        ffmpeg = getattr(self.app, "ffmpeg_path", None)
+        if not ffmpeg or not os.path.isfile(ffmpeg):
             self._log("ffmpeg introuvable. Vérifiez l'onglet Options / outils.")
             return
 
         self._stop_event.clear()
 
-        # Progression
+        total = len(self._files)
+        self._single_file_mode = (total <= 1)
+
         try:
-            self.pb.configure(maximum=max(1, len(self._files)), value=0)
+            self.pb.stop()
+            if self._single_file_mode:
+                self.pb.configure(mode="determinate", maximum=100, value=0)
+            else:
+                self.pb.configure(mode="determinate", maximum=total, value=0)
         except Exception:
             pass
-        self._set_running(True)
 
+        self._set_running(True)
         self._worker = threading.Thread(target=self._worker_convert, daemon=True)
         self._worker.start()
 
@@ -498,7 +471,11 @@ class ConvertTab(ttk.Frame):
         dest_dir = self.dest_dir_var.get().strip()
 
         total = len(self._files)
-        self._qprogress(0, maximum=total)
+        if self._single_file_mode:
+            self._qprogress(0, maximum=100)
+        else:
+            self._qprogress(0, maximum=total)
+
         self._qlog(f"▶️ Conversion vers {fmt} — {total} fichier(s)")
 
         ok_count = 0
@@ -510,17 +487,20 @@ class ConvertTab(ttk.Frame):
 
             if not os.path.isfile(src):
                 self._qlog(f"⚠️ [{idx}] Fichier introuvable : {src}")
-                self._qprogress(idx)
+                if not self._single_file_mode:
+                    self._qprogress(idx)
                 continue
 
             out_path = self._build_output_path(dest_dir, src, fmt)
-            self._qlog(f"🎛️ [{idx}/{total}] Source : {src}")
-            self._qlog(f"🎧 [{idx}/{total}] Sortie : {out_path}")
+
+            duration_s = None
+            if self._single_file_mode:
+                duration_s = self._get_media_duration_seconds(src)
 
             if bool(self.normalize_var.get()):
-                rc = self._ffmpeg_normalize_convert(src, out_path, fmt, keep_meta)
+                rc = self._ffmpeg_normalize_convert(src, out_path, fmt, keep_meta, duration_s=duration_s)
             else:
-                rc = self._ffmpeg_convert(src, out_path, fmt, keep_meta)
+                rc = self._ffmpeg_convert(src, out_path, fmt, keep_meta, duration_s=duration_s)
 
             if rc == 0 and os.path.isfile(out_path):
                 ok_count += 1
@@ -537,7 +517,11 @@ class ConvertTab(ttk.Frame):
             else:
                 self._qlog(f"❌ [{idx}] Échec (code {rc})")
 
-            self._qprogress(idx)
+            if self._single_file_mode:
+                # si on n'a pas pu calculer un % pendant l'exécution, au moins conclure visuellement
+                self._qprogress(100, maximum=100)
+            else:
+                self._qprogress(idx, maximum=total)
 
         self._qlog(f"🏁 Terminé : {ok_count} conversion(s) réussie(s).")
         self._qdone()
@@ -556,38 +540,72 @@ class ConvertTab(ttk.Frame):
                 return cand
             i += 1
 
+    # ---------------- Duration / ffprobe ----------------
+
+    def _get_media_duration_seconds(self, src_path: str) -> float | None:
+        ffprobe = getattr(self.app, "ffprobe_path", None)
+        if not ffprobe or not os.path.isfile(ffprobe):
+            return None
+
+        try:
+            p = subprocess.run(
+                [
+                    ffprobe,
+                    "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    src_path,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            s = (p.stdout or "").strip()
+            if not s:
+                return None
+            dur = float(s)
+            if dur > 0:
+                return dur
+        except Exception:
+            return None
+
+        return None
+
     # ---------------- ffmpeg building ----------------
 
-    def _ffmpeg_convert(self, src_path: str, out_path: str, fmt: str, keep_meta: bool) -> int:
+    def _ffmpeg_convert(self, src_path: str, out_path: str, fmt: str, keep_meta: bool, duration_s: float | None = None) -> int:
         ffmpeg = self.app.ffmpeg_path
 
-        cmd = [ffmpeg, "-y", "-hide_banner", "-nostdin", "-i", src_path]
+        cmd = [ffmpeg, "-y", "-hide_banner", "-nostdin"]
+        if duration_s and duration_s > 0:
+            cmd += ["-progress", "pipe:1", "-nostats"]
+        cmd += ["-i", src_path]
 
-        # métadonnées
+        # Métadonnées
         if keep_meta:
             cmd += ["-map_metadata", "0"]
         else:
             cmd += ["-map_metadata", "-1"]
 
-        # format / codec / qualité
+        # Codec / qualité
         if fmt == "mp3":
-            q = (self.app.mp3_quality_var.get() or "5").strip()
+            q = (getattr(self.app, "mp3_quality_var").get() if hasattr(self.app, "mp3_quality_var") else "5").strip() or "5"
             cmd += ["-vn", "-codec:a", "libmp3lame", "-q:a", q, out_path]
 
         elif fmt == "m4a":
-            br = (self.app.aac_bitrate_var.get() or "192k").strip()
+            br = (getattr(self.app, "aac_bitrate_var").get() if hasattr(self.app, "aac_bitrate_var") else "192k").strip() or "192k"
             cmd += ["-vn", "-codec:a", "aac", "-b:a", br, out_path]
 
         elif fmt == "opus":
-            br = (self.app.opus_bitrate_var.get() or "128k").strip()
+            br = (getattr(self.app, "opus_bitrate_var").get() if hasattr(self.app, "opus_bitrate_var") else "128k").strip() or "128k"
             cmd += ["-vn", "-codec:a", "libopus", "-b:a", br, out_path]
 
         elif fmt == "flac":
-            lvl = (self.app.flac_level_var.get() or "5").strip()
+            lvl = (getattr(self.app, "flac_level_var").get() if hasattr(self.app, "flac_level_var") else "5").strip() or "5"
             cmd += ["-vn", "-codec:a", "flac", "-compression_level", lvl, out_path]
 
         elif fmt == "ogg":
-            q = (self.app.vorbis_quality_var.get() or "4").strip()
+            q = (getattr(self.app, "vorbis_quality_var").get() if hasattr(self.app, "vorbis_quality_var") else "4").strip() or "4"
             cmd += ["-vn", "-codec:a", "libvorbis", "-q:a", q, out_path]
 
         elif fmt == "wav":
@@ -598,17 +616,12 @@ class ConvertTab(ttk.Frame):
             return 2
 
         self._qlog("▶️ ffmpeg : " + " ".join(cmd))
-        return self._run_subprocess(cmd)
+        return self._run_subprocess(cmd, duration_s=duration_s)
 
-    def _ffmpeg_normalize_convert(self, src_path: str, out_path: str, fmt: str, keep_meta: bool) -> int:
-        """
-        Normalisation simple type EBU R128 :
-        1) analyse loudnorm (pass 1)
-        2) application loudnorm (pass 2)
-        """
+    def _ffmpeg_normalize_convert(self, src_path: str, out_path: str, fmt: str, keep_meta: bool, duration_s: float | None = None) -> int:
         ffmpeg = self.app.ffmpeg_path
 
-        # Pass 1 (analyse)
+        # Pass 1 : analyse loudnorm
         cmd_analyze = [
             ffmpeg, "-y", "-hide_banner", "-nostdin",
             "-i", src_path,
@@ -618,23 +631,26 @@ class ConvertTab(ttk.Frame):
         self._qlog("🎚️ Normalisation (2 passes) — Pass 1/2 (analyse)")
         self._qlog("▶️ ffmpeg : " + " ".join(cmd_analyze))
 
-        rc = self._run_subprocess_capture_json(cmd_analyze)
-        if rc is None:
+        norm = self._run_subprocess_capture_json(cmd_analyze)
+        if norm is None:
             self._qlog("❌ Analyse normalisation impossible.")
             return 2
 
-        # Pass 2 (application loudnorm)
         loudnorm = (
             f"loudnorm=I=-16:TP=-1.5:LRA=11:"
-            f"measured_I={rc.get('input_i','-16')}:"
-            f"measured_TP={rc.get('input_tp','-1.5')}:"
-            f"measured_LRA={rc.get('input_lra','11')}:"
-            f"measured_thresh={rc.get('input_thresh','-26')}:"
-            f"offset={rc.get('target_offset','0')}:"
+            f"measured_I={norm.get('input_i','-16')}:"
+            f"measured_TP={norm.get('input_tp','-1.5')}:"
+            f"measured_LRA={norm.get('input_lra','11')}:"
+            f"measured_thresh={norm.get('input_thresh','-26')}:"
+            f"offset={norm.get('target_offset','0')}:"
             f"linear=true:print_format=summary"
         )
 
-        cmd_apply = [ffmpeg, "-y", "-hide_banner", "-nostdin", "-i", src_path]
+        # Pass 2 : application + (optionnel) progress pipe
+        cmd_apply = [ffmpeg, "-y", "-hide_banner", "-nostdin"]
+        if duration_s and duration_s > 0:
+            cmd_apply += ["-progress", "pipe:1", "-nostats"]
+        cmd_apply += ["-i", src_path]
 
         if keep_meta:
             cmd_apply += ["-map_metadata", "0"]
@@ -643,21 +659,20 @@ class ConvertTab(ttk.Frame):
 
         cmd_apply += ["-af", loudnorm]
 
-        # format / codec / qualité
         if fmt == "mp3":
-            q = (self.app.mp3_quality_var.get() or "5").strip()
+            q = (getattr(self.app, "mp3_quality_var").get() if hasattr(self.app, "mp3_quality_var") else "5").strip() or "5"
             cmd_apply += ["-vn", "-codec:a", "libmp3lame", "-q:a", q]
         elif fmt == "m4a":
-            br = (self.app.aac_bitrate_var.get() or "192k").strip()
+            br = (getattr(self.app, "aac_bitrate_var").get() if hasattr(self.app, "aac_bitrate_var") else "192k").strip() or "192k"
             cmd_apply += ["-vn", "-codec:a", "aac", "-b:a", br]
         elif fmt == "opus":
-            br = (self.app.opus_bitrate_var.get() or "128k").strip()
+            br = (getattr(self.app, "opus_bitrate_var").get() if hasattr(self.app, "opus_bitrate_var") else "128k").strip() or "128k"
             cmd_apply += ["-vn", "-codec:a", "libopus", "-b:a", br]
         elif fmt == "flac":
-            lvl = (self.app.flac_level_var.get() or "5").strip()
+            lvl = (getattr(self.app, "flac_level_var").get() if hasattr(self.app, "flac_level_var") else "5").strip() or "5"
             cmd_apply += ["-vn", "-codec:a", "flac", "-compression_level", lvl]
         elif fmt == "ogg":
-            q = (self.app.vorbis_quality_var.get() or "4").strip()
+            q = (getattr(self.app, "vorbis_quality_var").get() if hasattr(self.app, "vorbis_quality_var") else "4").strip() or "4"
             cmd_apply += ["-vn", "-codec:a", "libvorbis", "-q:a", q]
         elif fmt == "wav":
             cmd_apply += ["-vn", "-codec:a", "pcm_s16le"]
@@ -669,12 +684,9 @@ class ConvertTab(ttk.Frame):
 
         self._qlog("🎚️ Normalisation (2 passes) — Pass 2/2 (application)")
         self._qlog("▶️ ffmpeg : " + " ".join(cmd_apply))
-        return self._run_subprocess(cmd_apply)
+        return self._run_subprocess(cmd_apply, duration_s=duration_s)
 
     def _run_subprocess_capture_json(self, cmd: list[str]) -> dict | None:
-        """
-        Lance ffmpeg et tente d'extraire un JSON loudnorm imprimé (pass 1).
-        """
         try:
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
         except Exception as e:
@@ -709,7 +721,6 @@ class ConvertTab(ttk.Frame):
 
             p.wait()
 
-            # tente parse
             raw = "\n".join(json_buf).strip()
             if raw.startswith("{") and raw.endswith("}"):
                 try:
@@ -726,12 +737,14 @@ class ConvertTab(ttk.Frame):
                 pass
             return None
 
-    def _run_subprocess(self, cmd: list[str]) -> int:
+    def _run_subprocess(self, cmd: list[str], duration_s: float | None = None) -> int:
         try:
             p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
         except Exception as e:
             self._qlog(f"❌ Impossible de lancer ffmpeg : {e}")
             return 2
+
+        last_percent = -1
 
         try:
             assert p.stdout is not None
@@ -743,9 +756,36 @@ class ConvertTab(ttk.Frame):
                         pass
                     return 130
 
-                line = (line or "").rstrip()
-                if line:
-                    self._qlog(line)
+                line = (line or "").strip()
+                if not line:
+                    continue
+
+                # Progress ffmpeg (key=value) si activé
+                if duration_s and duration_s > 0 and "=" in line and self._single_file_mode:
+                    key, val = line.split("=", 1)
+                    key = key.strip()
+                    val = val.strip()
+
+                    if key == "out_time_ms":
+                        try:
+                            out_s = int(val) / 1_000_000.0
+                            percent = int(max(0.0, min(100.0, (out_s / duration_s) * 100.0)))
+                            if percent != last_percent:
+                                last_percent = percent
+                                self._qprogress(percent, maximum=100)
+                        except Exception:
+                            pass
+                        continue
+
+                    if key == "progress" and val == "end":
+                        self._qprogress(100, maximum=100)
+                        continue
+
+                    # évite le spam de log progress
+                    continue
+
+                # Log classique
+                self._qlog(line)
 
             rc = p.wait()
             return int(rc) if rc is not None else 1

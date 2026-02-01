@@ -7,6 +7,26 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.9.1] – 2026-02-01
+
+Modifié
+
+ - Les fichiers convértits vont dans un répértoire sur le bureau
+   appelé "Klmp3conversions" suivi de AAMMJJ (année, mois, jour)
+   suppression du journal --> infos vers l'ongelt général
+   barre de progression comme dans l'onglet métadonnées 
+
+ - Amélioration du comportement de la barre progréssion dans 
+   l'onglet conversion
+
+ - Boutons de choix du dossier cible et chemin intervertits dans onglet général
+
+ - Ré organisation de l'ordre: Démarrer ---barre de progréssion--- Arrêter dans général
+
+ - Ré organisation de l'ordre des onglets (général / métadonnées / conversion / options / aide)
+ 
+---
+
 [2.9] – 2026-02-01
 
 Modifié
