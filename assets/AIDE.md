@@ -80,14 +80,8 @@ WAV → audio brut, non compressé 🎚️
 KLmp3 sélectionne automatiquement le meilleur flux audio disponible  
 puis effectue la conversion vers le format choisi 🔄
 
----
-
-🧪 Conserver les fichiers intermédiaires (debug)
-
-⚠️ Option réservée au debug ⚠️  
-🚫 En usage normal, laissez cette option désactivée 🚫
-
-Elle permet de conserver les fichiers temporaires pour analyse.
+Options de normalisation à cocher dans l'onglet général ✅️
+choix du type de normalisation dans l'onglet options ⚙️
 
 ---
 

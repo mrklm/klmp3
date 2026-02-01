@@ -7,6 +7,16 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.8.7] – 2026-02-01
+
+Ajouté
+
+ - Fonction de normalisation raccordée à l'interface graphique:
+   case à cocher dans l'onglet général 
+   choix du type de normalisation dans l'onglet option
+
+---
+
 [2.8.6] – 2026-02-01
 
 Ajouté

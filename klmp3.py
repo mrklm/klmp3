@@ -76,6 +76,11 @@ MAX_URLS = 10
 DL_MODE_SINGLE = "Un seul fichier"
 DL_MODE_PLAYLIST = "La playlist complète"
 
+# Normalisation : modes
+NORM_MODE_FAST = "Rapide (1 passe)"
+NORM_MODE_TWO_PASS = "Deux passes (avec analyse)"
+
+
 # Bibli de thèmes (issus de Garage)
 THEMES = {
     # ===== Thèmes sombres (sobres / quotidiens) =====
@@ -515,7 +520,7 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLMP3 - v2.8.5")
+        self.title("KLMP3 - v2.8.7")
         self.geometry("820x620")
         self.minsize(780, 560)
 
@@ -565,6 +570,11 @@ class App(tk.Tk):
         self.flac_level_var = tk.StringVar(value="5")             # 0..8
 
         self.keep_intermediate_var = tk.BooleanVar(value=False)
+        
+        # Normalisation (audio)
+        self.normalize_enabled_var = tk.BooleanVar(value=False)
+        self.normalization_mode_var = tk.StringVar(value=NORM_MODE_FAST)
+
 
         # Options → Métadonnées (centralisées)
         self.square_cover_var = tk.BooleanVar(value=True)
@@ -718,6 +728,14 @@ class App(tk.Tk):
         self.spin_playlist_limit = ttk.Spinbox(frm_dl, from_=2, to=1000, textvariable=self.playlist_limit_n_var, width=6)
         self.spin_playlist_limit.grid(row=0, column=3, sticky="w", padx=(8, 0))
         ttk.Label(frm_dl, text="fichiers").grid(row=0, column=4, sticky="w", padx=(6, 0))
+        
+        self.chk_normalize = ttk.Checkbutton(
+            frm_dl,
+            text="Normaliser",
+            variable=self.normalize_enabled_var
+        )
+        self.chk_normalize.grid(row=0, column=5, sticky="w", padx=(18, 0))
+
 
         self._update_download_controls()
         frm_mid = ttk.Frame(self.tab_general)
@@ -931,15 +949,23 @@ class App(tk.Tk):
         self.w_wav = ttk.Frame(self.adv_holder)
         ttk.Label(self.w_wav, text="WAV = non compressé (16-bit), pas de réglage.").grid(row=0, column=0, sticky="w")
 
-        # Keep intermediate
-        row_keep = ttk.Frame(frm_adv)
-        row_keep.grid(row=2, column=0, sticky="w", padx=10, pady=(0, 8))
+        # Normalisation
+        row_norm = ttk.Frame(frm_adv)
+        row_norm.grid(row=2, column=0, sticky="w", padx=10, pady=(0, 8))
 
-        ttk.Checkbutton(
-            row_keep,
-            text="Conserver le fichier intermédiaire (utile pour debug)",
-            variable=self.keep_intermediate_var
-        ).pack(side="left")
+        ttk.Label(row_norm, text="Normalisation :").pack(side="left")
+
+        self.cb_normalization_mode = ttk.Combobox(
+            row_norm,
+            textvariable=self.normalization_mode_var,
+            values=[NORM_MODE_FAST, NORM_MODE_TWO_PASS],
+            state="readonly",
+            width=26
+        )
+        self.cb_normalization_mode.pack(side="left", padx=(10, 0))
+
+        ttk.Label(row_norm, text="(réglage utilisé si 'Normaliser' est coché)").pack(side="left", padx=(10, 0))
+
         
         # --- Options → Métadonnées (auto) ---
         frm_meta_auto = ttk.LabelFrame(parent, text="Métadonnées (automatique)")
@@ -1622,7 +1648,16 @@ class App(tk.Tk):
 
             self.log(f"📦 Intermédiaire : {downloaded_path}")
 
-            ok2, msg_or_final = self._convert_audio(downloaded_path, fmt)
+            if self.normalize_enabled_var.get():
+                mode = self.normalization_mode_var.get().strip()
+                if mode == NORM_MODE_TWO_PASS:
+                    ok2, msg_or_final = self.normalize_two_pass(downloaded_path, fmt)
+                else:
+                    ok2, msg_or_final = self.normalize_one_pass(downloaded_path, fmt)
+            else:
+                ok2, msg_or_final = self._convert_audio(downloaded_path, fmt)
+
+            
             if not ok2:
                 # Si l'utilisateur a annulé pendant ffmpeg, on nettoie tout de suite
                 if self.stop_flag.is_set():
