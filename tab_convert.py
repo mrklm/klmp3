@@ -8,6 +8,8 @@ import subprocess
 import tkinter as tk
 from tkinter import ttk, filedialog
 import re
+import json
+
 
 
 def _format_size(num_bytes: int) -> str:
@@ -56,6 +58,8 @@ class ConvertTab(ttk.Frame):
 
         self.keep_metadata_var = tk.BooleanVar(value=True)
         self.delete_source_var = tk.BooleanVar(value=False)
+        self.normalize_var = tk.BooleanVar(value=False)
+
 
         # Qualité affichée (synchro avec les variables de l'app)
         self.quality_label_var = tk.StringVar(value="Qualité MP3 (VBR)")
@@ -155,6 +159,14 @@ class ConvertTab(ttk.Frame):
 
         self.lbl_quality_hint = ttk.Label(row_q, textvariable=self.quality_hint_var)
         self.lbl_quality_hint.grid(row=0, column=1, sticky="w", padx=(10, 0))
+        
+        # Normalisation (optionnel) — sous la qualité
+        ttk.Checkbutton(
+            frm_fmt,
+            text="Normaliser",
+            variable=self.normalize_var
+        ).grid(row=4, column=0, sticky="w", pady=(0, 12))
+
 
         frm_dest = ttk.Frame(right)
         frm_dest.pack(fill="x", pady=(0, 10))
@@ -378,7 +390,11 @@ class ConvertTab(ttk.Frame):
             self._qlog(f"🎛️ [{idx}/{len(self._files)}] Source : {src}")
             self._qlog(f"🎧 [{idx}/{len(self._files)}] Sortie : {out_path}")
 
-            rc = self._ffmpeg_convert(src, out_path, fmt, keep_meta)
+            if bool(self.normalize_var.get()):
+                rc = self._ffmpeg_normalize_convert(src, out_path, fmt, keep_meta)
+            else:
+                rc = self._ffmpeg_convert(src, out_path, fmt, keep_meta)
+
             if rc == 0 and os.path.isfile(out_path):
                 ok_count += 1
                 self._qlog(f"✅ [{idx}] OK")
@@ -456,6 +472,210 @@ class ConvertTab(ttk.Frame):
 
         self._qlog("▶️ ffmpeg : " + " ".join(cmd))
         return self._run_subprocess(cmd)
+    
+    def _get_norm_targets(self) -> tuple[float, float, float]:
+        #Récupère (I, TP, LRA) depuis l'app si disponible.
+        #Fallback sur (-16, -1.5, 11) si absent ou invalide.
+        def _read_float(var_name: str, default: float) -> float:
+            try:
+                v = getattr(self.app, var_name)
+                # var Tk (StringVar) -> .get()
+                if hasattr(v, "get"):
+                    s = str(v.get()).strip().replace(",", ".")
+                else:
+                    s = str(v).strip().replace(",", ".")
+                return float(s)
+            except Exception:
+                return default
+
+        I = _read_float("norm_target_i_var", -16.0)
+        TP = _read_float("norm_target_tp_var", -1.5)
+        LRA = _read_float("norm_target_lra_var", 11.0)
+
+        # garde-fous raisonnables
+        if not (-30.0 <= I <= -5.0):
+            I = -16.0
+        if not (-6.0 <= TP <= 0.0):
+            TP = -1.5
+        if not (1.0 <= LRA <= 20.0):
+            LRA = 11.0
+
+        return I, TP, LRA
+
+    def _parse_loudnorm_json(self, collected_output: str) -> dict | None:
+        m = re.search(r"\{.*\}", collected_output, flags=re.DOTALL)
+        if not m:
+            return None
+        try:
+            return json.loads(m.group(0))
+        except Exception:
+            return None
+
+    def _run_subprocess_collect(self, cmd: list[str]) -> tuple[int, str]:
+        """
+        Exécute une commande et retourne (code, stdout+stderr).
+        Respecte le bouton Stop.
+        """
+        try:
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        except Exception as e:
+            self._qlog(f"❌ Impossible de lancer ffmpeg : {e}")
+            return 2, ""
+
+        out_lines: list[str] = []
+        try:
+            assert p.stdout is not None
+            for line in p.stdout:
+                if self._stop_event.is_set():
+                    try:
+                        p.terminate()
+                    except Exception:
+                        pass
+                    return 130, "\n".join(out_lines)
+
+                line = (line or "").rstrip()
+                if line:
+                    out_lines.append(line)
+                    self._qlog(line)
+
+            rc = p.wait()
+            return (int(rc) if rc is not None else 1), "\n".join(out_lines)
+
+        except Exception as e:
+            self._qlog(f"❌ Erreur pendant la conversion : {e}")
+            try:
+                p.terminate()
+            except Exception:
+                pass
+            return 1, "\n".join(out_lines)
+
+    def _ffmpeg_normalize_convert(self, in_path: str, out_path: str, fmt: str, keep_meta: bool) -> int:
+        """
+        Convertit + normalise (loudnorm).
+        - Si l'app expose normalization_mode_var et NORM_MODE_TWO_PASS : utilise 2 passes.
+        - Sinon : 1 passe.
+        """
+        # codec + args (mêmes règles que _ffmpeg_convert)
+        if fmt == "mp3":
+            codec = "libmp3lame"
+            args = ["-q:a", self.app.mp3_quality_var.get().strip()]
+
+        elif fmt == "m4a":
+            codec = "aac_at" if (os.sys.platform == "darwin" and getattr(self.app, "has_aac_at", False)) else "aac"
+            args = ["-b:a", self.app.aac_bitrate_var.get().strip()]
+
+        elif fmt == "opus":
+            codec = "libopus"
+            args = ["-b:a", self.app.opus_bitrate_var.get().strip()]
+
+        elif fmt == "flac":
+            codec = "flac"
+            args = ["-compression_level", self.app.flac_level_var.get().strip()]
+
+        elif fmt == "ogg":
+            codec = "libvorbis"
+            args = ["-q:a", self.app.vorbis_quality_var.get().strip()]
+
+        elif fmt == "wav":
+            codec = "pcm_s16le"
+            args = []
+
+        else:
+            self._qlog(f"❌ Format inconnu : {fmt}")
+            return 2
+
+        I, TP, LRA = self._get_norm_targets()
+
+        # Lecture du mode 1/2 passes depuis l'app si dispo
+        mode = ""
+        try:
+            v = getattr(self.app, "normalization_mode_var", None)
+            if v is not None and hasattr(v, "get"):
+                mode = str(v.get()).strip()
+        except Exception:
+            mode = ""
+
+        # Heuristique simple : si le libellé contient "Deux passes", on fait 2 passes
+        two_pass = ("Deux passes" in mode)
+
+        if not two_pass:
+            af = f"loudnorm=I={I}:TP={TP}:LRA={LRA}"
+
+            cmd = [
+                self.app.ffmpeg_path, "-y",
+                "-i", in_path,
+                "-map", "0:a:0",
+                "-vn",
+                "-af", af,
+            ]
+            if keep_meta:
+                cmd += ["-map_metadata", "0"]
+
+            cmd += ["-c:a", codec]
+            cmd += args
+            cmd += [out_path]
+
+            self._qlog("🎚️ Normalisation (1 passe) : " + af)
+            self._qlog("▶️ ffmpeg : " + " ".join(cmd))
+            return self._run_subprocess(cmd)
+
+        # -------- 2 passes --------
+        af_measure = f"loudnorm=I={I}:TP={TP}:LRA={LRA}:print_format=json"
+        cmd_measure = [
+            self.app.ffmpeg_path, "-y",
+            "-i", in_path,
+            "-map", "0:a:0",
+            "-vn",
+            "-af", af_measure,
+            "-f", "null",
+            "-"
+        ]
+
+        self._qlog("🎚️ Normalisation (2 passes) — Pass 1/2 (mesure)")
+        self._qlog("▶️ ffmpeg : " + " ".join(cmd_measure))
+        rc1, out1 = self._run_subprocess_collect(cmd_measure)
+        if rc1 != 0:
+            return rc1
+
+        meas = self._parse_loudnorm_json(out1)
+        if not meas:
+            self._qlog("❌ Mesures loudnorm introuvables (JSON).")
+            return 1
+
+        try:
+            measured_I = float(meas["input_i"])
+            measured_TP = float(meas["input_tp"])
+            measured_LRA = float(meas["input_lra"])
+            measured_thresh = float(meas["input_thresh"])
+            offset = float(meas["target_offset"])
+        except Exception:
+            self._qlog("❌ Mesures loudnorm invalides/incomplètes.")
+            return 1
+
+        af_apply = (
+            f"loudnorm=I={I}:TP={TP}:LRA={LRA}"
+            f":measured_I={measured_I}:measured_TP={measured_TP}:measured_LRA={measured_LRA}"
+            f":measured_thresh={measured_thresh}:offset={offset}:linear=true:print_format=summary"
+        )
+
+        cmd_apply = [
+            self.app.ffmpeg_path, "-y",
+            "-i", in_path,
+            "-map", "0:a:0",
+            "-vn",
+            "-af", af_apply,
+        ]
+        if keep_meta:
+            cmd_apply += ["-map_metadata", "0"]
+
+        cmd_apply += ["-c:a", codec]
+        cmd_apply += args
+        cmd_apply += [out_path]
+
+        self._qlog("🎚️ Normalisation (2 passes) — Pass 2/2 (application)")
+        self._qlog("▶️ ffmpeg : " + " ".join(cmd_apply))
+        return self._run_subprocess(cmd_apply)
+
 
     def _run_subprocess(self, cmd: list[str]) -> int:
         try:

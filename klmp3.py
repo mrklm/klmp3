@@ -522,7 +522,7 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLMP3 - v2.8.8")
+        self.title("KLMP3 - v2.8.9")
         self.geometry("820x620")
         self.minsize(780, 560)
 
@@ -1399,6 +1399,47 @@ class App(tk.Tk):
             return out
         except Exception:
             return base_outdir
+        
+    def _normalize_playlist_double_numbering(self, downloaded_path: str) -> str:
+        """
+        Corrige le cas où un fichier de playlist se retrouve numéroté 2 fois, ex:
+            "01 - 01 - Titre.ext"   -> "01 - Titre.ext"
+            "001 - 001 - Titre.ext" -> "001 - Titre.ext"
+        Best effort : si pas de match, retourne le chemin original.
+        """
+        try:
+            folder = os.path.dirname(downloaded_path)
+            name = os.path.basename(downloaded_path)
+
+            # Exemple ciblé : "01 - 01 - ..."
+            # On garde la 2e numérotation + le reste.
+            m = re.match(r"^(\d{1,3})\s*-\s*(\d{1,3})\s*-\s*(.+)$", name)
+            if not m:
+                return downloaded_path
+
+            n1 = m.group(1)
+            n2 = m.group(2)
+            rest = m.group(3)
+
+            # On ne corrige que si les deux numéros sont identiques.
+            if n1 != n2:
+                return downloaded_path
+
+            new_name = f"{n2} - {rest}"
+            new_path = os.path.join(folder, new_name)
+
+            # Évite d'écraser un fichier existant
+            if os.path.exists(new_path):
+                return downloaded_path
+
+            os.rename(downloaded_path, new_path)
+            self.log(f"🔧 Renommage playlist : {name} → {new_name}")
+            return new_path
+
+        except Exception:
+            return downloaded_path
+
+
 
 
     def choose_outdir(self):

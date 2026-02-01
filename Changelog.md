@@ -7,6 +7,16 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+---
+
+[2.8.9] – 2026-02-01
+
+Ajouté
+
+ - Bouton Normaliser dans l'onglet conversion
+
+---
+
 [2.8.8] – 2026-02-02
 
 Modifié
@@ -22,6 +32,8 @@ Ajouté
  - Fonction de normalisation raccordée à l'interface graphique:
    case à cocher dans l'onglet général 
    choix du type de normalisation dans l'onglet option
+
+ - mise a jour de l'aide (section normalisation)
 
 ---
 
