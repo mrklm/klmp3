@@ -198,7 +198,18 @@ Un bouton permet de mettre à jour yt-dlp directement depuis l’onglet Options.
 
 ✨ KLmp3 s’occupe de la technique, vous profitez du son ✨
 
+
+
+
+
+
+
 ---
+
+
+
+
+
 
 
 🎚️ Réglages avancés de normalisation:
@@ -218,7 +229,7 @@ vous écoutez en voiture, au casque ou en fond sonore,
 
 vous préparez des podcasts, conférences ou vidéos parlées.
 
-👉 Si vos fichiers vous conviennent déjà, ne cochez pas “Normaliser” : KLMP3 n’altérera rien.
+👉 Si vos fichiers vous conviennent déjà, ne cochez pas “Normaliser” 
 
 
 2️⃣ Les modes de normalisation disponibles
@@ -262,7 +273,8 @@ Permet de définir manuellement les cibles audio
 
 Basé sur la norme EBU R128
 
-⚠️ À utiliser si vous savez ce que vous faites (ou si vous suivez les recommandations ci-dessous).
+⚠️ À utiliser si vous savez ce que vous faites 
+(ou si vous suivez les recommandations ci-dessous).
 
 3️⃣ Comprendre LUFS / TP / LRA (sans jargon)
 🎧 LUFS (Loudness Integrated)
@@ -348,7 +360,8 @@ LRA : 7 à 8
 ❌ Elle ne recrée pas de dynamique perdue
 ❌ Elle ne remplace pas un vrai mix audio
 
-👉 Elle optimise l’écoute, elle ne transforme pas un son médiocre en son studio.
+👉 Elle optimise l’écoute, 
+elle ne transforme pas un son médiocre en son studio.
 
 6️⃣ Conseil final
 
