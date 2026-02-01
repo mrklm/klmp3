@@ -215,7 +215,8 @@ Un bouton permet de mettre à jour yt-dlp directement depuis l’onglet Options.
 🎚️ Réglages avancés de normalisation:
 
 
-La normalisation audio permet d’obtenir un volume perçu homogène, confortable à l’écoute, sans saturation ni écarts gênants entre fichiers.
+La normalisation audio permet d’obtenir un volume perçu homogène,
+confortable à l’écoute, sans saturation ni écarts gênants entre fichiers.
 
 KLMP3 propose trois niveaux de normalisation, du plus simple au plus précis.
 
@@ -276,8 +277,9 @@ Basé sur la norme EBU R128
 ⚠️ À utiliser si vous savez ce que vous faites 
 (ou si vous suivez les recommandations ci-dessous).
 
-3️⃣ Comprendre LUFS / TP / LRA (sans jargon)
-🎧 LUFS (Loudness Integrated)
+3️⃣ Comprendre LUFS / TP / LRA:
+
+--> 🎧 LUFS (Loudness Integrated)
 
 ➡️ Volume perçu moyen sur toute la durée du fichier.
 
@@ -293,7 +295,7 @@ TV / broadcast : -23 LUFS
 
 👉 C’est le réglage le plus important.
 
-🚨 TP — True Peak
+--> 🚨 TP — True Peak
 
 ➡️ Sécurité anti-saturation réelle, y compris après encodage MP3/AAC.
 
@@ -309,7 +311,7 @@ Dangereux : 0.0 dBTP
 
 👉 Toujours laisser une marge négative.
 
-🎼 LRA — Loudness Range
+--> 🎼 LRA — Loudness Range
 
 ➡️ Dynamique perçue (écart entre passages calmes et forts).
 
@@ -421,6 +423,9 @@ et les oreilles curieuses 🎧
   🐍 → mode recommandé soit comme binaire externe (secours) 
   🧰 💡 yt-dlp ne convertit pas vraiment l’audio :
    il télécharge la meilleure source disponible.
+
+  🛠️ Dans l'onglet options vous pouvez télécharger 
+  la dernière version disponible de yt-dlp.
    
     ---
     
