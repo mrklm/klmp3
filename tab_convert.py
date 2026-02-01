@@ -217,7 +217,7 @@ class ConvertTab(ttk.Frame):
         ttk.Checkbutton(frm_fmt, text="Conserver les métadonnées", variable=self.keep_metadata_var).grid(
             row=3, column=0, sticky="w"
         )
-        ttk.Checkbutton(frm_fmt, text="Supprimer la source après succès", variable=self.delete_source_var).grid(
+        ttk.Checkbutton(frm_fmt, text="Supprimer la source après conversion", variable=self.delete_source_var).grid(
             row=4, column=0, sticky="w", pady=(0, 12)
         )
 

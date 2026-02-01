@@ -52,23 +52,11 @@ class HelpTab(ttk.Frame):
 
         # Layout
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(1, weight=1)
-
-        # Barre d'actions (haut)
-        bar = ttk.Frame(self)
-        bar.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 6))
-        bar.columnconfigure(0, weight=1)
-
-        self.lbl_path = ttk.Label(bar, text="")
-        self.lbl_path.grid(row=0, column=0, sticky="w")
-
-        ttk.Button(bar, text="Rafraîchir", command=self.load).grid(
-            row=0, column=1, sticky="e", padx=(8, 0)
-        )
+        self.rowconfigure(0, weight=1)
 
         # Zone texte + scrollbar
         frm = ttk.Frame(self)
-        frm.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        frm.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         frm.columnconfigure(0, weight=1)
         frm.rowconfigure(0, weight=1)
 
@@ -99,8 +87,6 @@ class HelpTab(ttk.Frame):
 
     def load(self):
         path = _resource_path(self.md_filename)
-        self.lbl_path.configure(text=f"📄 {self.md_filename} — {path}")
-
         try:
             with open(path, "r", encoding="utf-8") as f:
                 content = f.read()

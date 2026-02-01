@@ -374,7 +374,8 @@ def find_deno_tools_first() -> ToolPath:
         return ToolPath(path=cand, source="MISSING")
 
     return ToolPath(path=None, source="MISSING")
-def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event) -> int:
+def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event, set_proc=None, clear_proc=None) -> int:
+
     """Run a subprocess, stream stdout+stderr line by line to on_line()."""
 
     popen_kwargs = dict(
@@ -404,23 +405,43 @@ def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event) -> int:
 
     proc = subprocess.Popen(cmd, **popen_kwargs)
 
+    if callable(set_proc):
+        try:
+            set_proc(proc)
+        except Exception:
+            pass
+
     try:
         assert proc.stdout is not None
         for line in proc.stdout:
             if stop_flag.is_set():
                 try:
                     proc.terminate()
+                    try:
+                        proc.wait(timeout=2)
+                    except Exception:
+                        proc.kill()
                 except Exception:
                     pass
                 return 130
+
             on_line(line.rstrip("\n"))
+
         return proc.wait()
+
     finally:
+        if callable(clear_proc):
+            try:
+                clear_proc(proc)
+            except Exception:
+                pass
+
         try:
             if proc.stdout:
                 proc.stdout.close()
         except Exception:
             pass
+
 
 def default_outdir() -> str:
     """Dossier de sortie par défaut.
@@ -512,7 +533,7 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLMP3 - v2.9")
+        self.title("KLMP3 - v2.9.2")
         self.geometry("820x620")
         self.minsize(780, 560)
 
@@ -525,6 +546,8 @@ class App(tk.Tk):
         # State
         self.worker_thread: threading.Thread | None = None
         self.stop_flag = threading.Event()
+        self.active_proc = None  # subprocess.Popen courant (yt-dlp/ffmpeg)
+
         
         # --- Thread-safe UI log ---
         self._log_queue: list[str] = []
@@ -1619,9 +1642,46 @@ class App(tk.Tk):
             daemon=True
         )
         self.worker_thread.start()
+        
+    def _set_active_proc(self, proc):
+        self.active_proc = proc
+
+    def _clear_active_proc(self, proc):
+        if self.active_proc is proc:
+            self.active_proc = None
+
+        
     def stop(self):
+        # 1️⃣ Signal coopératif global
         self.stop_flag.set()
-        self.log("⏹️ Arrêt demandé… (le processus va s’interrompre)")
+        self.log("⏹️ Arrêt demandé…")
+
+        proc = getattr(self, "active_proc", None)
+        if proc is None:
+            # Rien à tuer immédiatement, mais le stop_flag suffira à interrompre les boucles / hooks
+            return
+
+        try:
+            # 2️⃣ Tentative d’arrêt propre
+            self.log("🛑 Tentative d’arrêt du processus en cours…")
+            proc.terminate()
+
+            # 3️⃣ On laisse une courte chance de sortie propre
+            try:
+                proc.wait(timeout=3)
+                self.log("✅ Processus arrêté proprement")
+            except Exception:
+                # 4️⃣ Si bloqué → exécution forcée
+                self.log("⚠️ Processus bloqué, arrêt forcé")
+                proc.kill()
+
+        except Exception as e:
+            self.log(f"⚠️ Erreur lors de l’arrêt du processus : {e}")
+
+        finally:
+            self.active_proc = None
+
+
 
     def _finish(self, ok: bool, msg: str):
         self.progress.stop()
@@ -1631,8 +1691,13 @@ class App(tk.Tk):
             self.log("✅ Terminé : " + msg)
             messagebox.showinfo("Terminé", msg)
         else:
-            self.log("❌ Erreur : " + msg)
-            messagebox.showerror("Erreur", msg)
+            # Si l'utilisateur a demandé l'arrêt, on ne traite pas ça comme une "erreur"
+            if msg.strip().startswith("⏹️") or "Arrêté par l’utilisateur" in msg or "Annulé" in msg:
+                self.log("⏹️ " + msg)
+                messagebox.showinfo("Arrêt", msg)
+            else:
+                self.log("❌ Erreur : " + msg)
+                messagebox.showerror("Erreur", msg)
 
     def _worker_queue(self, urls: list[str], outdir: str, dl_mode: str, limit_on: bool, limit_n: int):
         try:
@@ -1658,7 +1723,7 @@ class App(tk.Tk):
                     self.after(0, self._finish, False, final_msg)
                     return
 
-            self.after(0, self._finish, True, f"{len(urls)} URL traitée(s) avec succès.")
+            self.after(0, self._finish, True, f"{len(urls)} Fichiers Téléchargés et convertis.")
 
         except Exception as e:
             self.after(0, self._finish, False, str(e))
@@ -1820,6 +1885,12 @@ class App(tk.Tk):
                 self.ytdlp_mode = "binary"
 
         downloaded_path = None
+        
+        # ⏹️ Arrêt demandé AVANT lancement yt-dlp
+        if self.stop_flag.is_set():
+            self.log("⏹️ Annulation avant téléchargement")
+            return False, "⏹️ Annulé par l’utilisateur"
+
 
         # Id vidéo (pour retrouver le fichier même si “déjà téléchargé”)
         video_id = None
@@ -2011,7 +2082,12 @@ class App(tk.Tk):
                 if m:
                     downloaded_path = m.group(1).strip()
 
-            rc = run_subprocess(cmd, on_line, self.stop_flag)
+            rc = run_subprocess(
+                cmd, on_line, self.stop_flag,
+                set_proc=self._set_active_proc,
+                clear_proc=self._clear_active_proc
+            )   
+
             if rc == 130:
                 self._cleanup_partials_for(downloaded_path, platform)
                 return False, "⏹️ Annulé par l’utilisateur\n🧹 Fichiers temporaires nettoyés"
@@ -2120,7 +2196,11 @@ class App(tk.Tk):
         ]
 
         self.log("▶️ ffmpeg : " + " ".join(cmd_ff))
-        rc = run_subprocess(cmd_ff, self.log, self.stop_flag)
+        rc = run_subprocess(
+            cmd_ff, self.log, self.stop_flag,
+            set_proc=self._set_active_proc,
+            clear_proc=self._clear_active_proc
+        )
 
         if rc == 0 and os.path.isfile(out_path):
             return True, out_path
@@ -2248,7 +2328,11 @@ class App(tk.Tk):
 
         self.log("🎚️ Normalisation (1 passe) : " + af)
         self.log("▶️ ffmpeg : " + " ".join(cmd_ff))
-        rc = run_subprocess(cmd_ff, self.log, self.stop_flag)
+        rc = run_subprocess(
+            cmd_ff, self.log, self.stop_flag,
+            set_proc=self._set_active_proc,
+            clear_proc=self._clear_active_proc
+        )
 
         if rc == 0 and os.path.isfile(out_path):
             return True, out_path
@@ -2332,7 +2416,12 @@ class App(tk.Tk):
 
         self.log("🎚️ Normalisation (2 passes) — Pass 2/2 (application)")
         self.log("▶️ ffmpeg : " + " ".join(cmd_apply))
-        rc2 = run_subprocess(cmd_apply, self.log, self.stop_flag)
+        rc2 = run_subprocess(
+            cmd_apply, self.log, self.stop_flag,
+            set_proc=self._set_active_proc,
+            clear_proc=self._clear_active_proc
+        )
+
 
         if rc2 == 0 and os.path.isfile(out_path):
             return True, out_path

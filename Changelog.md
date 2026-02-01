@@ -7,6 +7,18 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.9.2] – 2026-02-01
+
+Modifié
+
+ - Chemnin du fichier AIDE.md dans l'onglet aide enlevé
+
+ - Réctification du procédé d'arrêt (boutons stop)
+
+ - Suppression du bouton rafraichir dans l'onglet aide
+
+---
+
 [2.9.1] – 2026-02-01
 
 Modifié
