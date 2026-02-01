@@ -82,6 +82,7 @@ puis effectue la conversion vers le format choisi 🔄
 
 Options de normalisation à cocher dans l'onglet général ✅️
 choix du type de normalisation dans l'onglet options ⚙️
+--> explication plus bas (Réglages avancés de normalisation)
 
 ---
 
@@ -198,6 +199,190 @@ Un bouton permet de mettre à jour yt-dlp directement depuis l’onglet Options.
 ✨ KLmp3 s’occupe de la technique, vous profitez du son ✨
 
 ---
+
+
+🎚️ Réglages avancés de normalisation:
+
+
+La normalisation audio permet d’obtenir un volume perçu homogène, confortable à l’écoute, sans saturation ni écarts gênants entre fichiers.
+
+KLMP3 propose trois niveaux de normalisation, du plus simple au plus précis.
+
+1️⃣ Quand utiliser la normalisation ?
+
+La normalisation est utile si :
+
+les fichiers ont des volumes très différents,
+
+vous écoutez en voiture, au casque ou en fond sonore,
+
+vous préparez des podcasts, conférences ou vidéos parlées.
+
+👉 Si vos fichiers vous conviennent déjà, ne cochez pas “Normaliser” : KLMP3 n’altérera rien.
+
+
+2️⃣ Les modes de normalisation disponibles
+
+Dans Options → Normalisation, trois modes sont proposés :
+
+🔹 Rapide (1 passe)
+
+Analyse et correction en une seule étape
+
+Rapide, efficace, peu gourmand
+
+✅ Recommandé pour :
+
+usage courant
+
+fichiers isolés
+
+conversions rapides
+
+🔹 Deux passes (avec analyse)
+
+Analyse complète du fichier (pass 1)
+
+Application précise de la correction (pass 2)
+
+✅ Recommandé pour :
+
+playlists
+
+séries de podcasts
+
+homogénéité maximale entre plusieurs fichiers
+
+
+
+🔹 Précis (LUFS / TP / LRA) (Mode expert)
+
+
+Permet de définir manuellement les cibles audio
+
+Basé sur la norme EBU R128
+
+⚠️ À utiliser si vous savez ce que vous faites (ou si vous suivez les recommandations ci-dessous).
+
+3️⃣ Comprendre LUFS / TP / LRA (sans jargon)
+🎧 LUFS (Loudness Integrated)
+
+➡️ Volume perçu moyen sur toute la durée du fichier.
+
+Plus la valeur est proche de 0, plus c’est fort
+
+Valeurs typiques :
+
+Podcast / voix : -16 LUFS
+
+Musique plateformes : -14 LUFS
+
+TV / broadcast : -23 LUFS
+
+👉 C’est le réglage le plus important.
+
+🚨 TP — True Peak
+
+➡️ Sécurité anti-saturation réelle, y compris après encodage MP3/AAC.
+
+Empêche les distorsions invisibles mais audibles
+
+Valeurs typiques :
+
+Sécurisé : -1.5 dBTP
+
+Limite acceptable : -1.0 dBTP
+
+Dangereux : 0.0 dBTP
+
+👉 Toujours laisser une marge négative.
+
+🎼 LRA — Loudness Range
+
+➡️ Dynamique perçue (écart entre passages calmes et forts).
+
+LRA faible → son constant, “radio”
+
+LRA élevé → son plus naturel, mais volume variable
+
+Valeurs typiques :
+
+Voix confortable : 8 à 12
+
+Musique dynamique : 12 à 20
+
+Écoute en voiture : 7 à 9
+
+4️⃣ Valeurs recommandées (prêtes à l’emploi)
+🎙️ Voix / podcast / conférence (recommandé)
+
+LUFS : -16
+
+TP : -1.5
+
+LRA : 11
+
+👉 Réglage par défaut de KLMP3.
+
+🎵 Musique (écoute personnelle)
+
+LUFS : -14
+
+TP : -1.0
+
+LRA : 8 à 12
+
+🚗 Voiture / environnement bruyant
+
+LUFS : -15
+
+TP : -1.0
+
+LRA : 7 à 8
+
+👉 Moins de variations, moins besoin de toucher au volume.
+
+5️⃣ Ce que la normalisation ne fait PAS
+
+❌ Elle ne “répare” pas un mauvais enregistrement
+❌ Elle ne recrée pas de dynamique perdue
+❌ Elle ne remplace pas un vrai mix audio
+
+👉 Elle optimise l’écoute, elle ne transforme pas un son médiocre en son studio.
+
+6️⃣ Conseil final
+
+Si vous hésitez :
+
+cochez Normaliser
+
+laissez Rapide ou Deux passes
+
+ne touchez pas aux réglages avancés
+
+Les réglages LUFS / TP / LRA sont là pour :
+
+les utilisateurs exigeants,
+
+les cas particuliers,
+
+et les oreilles curieuses 🎧
+
+
+
+
+
+
+
+
+---
+
+
+
+
+
+
+
 
 🔩  Bonus pour les Geeks 🔬
 
