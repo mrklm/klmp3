@@ -1,4 +1,4 @@
-![Version](https://img.shields.io/badge/version-2.8.4-blue)
+![Version](https://img.shields.io/badge/version-2.9.6-blue)
 ![License](https://img.shields.io/badge/license-GPL--3.0-green)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
@@ -14,9 +14,9 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 
 ![Fenêtre options](screenshots/KLmp3.png)
 ![Fenêtre general](screenshots/general.png)
-![Fenêtre options](screenshots/options.png)
-![Fenêtre conversions](screenshots/convert.png)
 ![Fenêtre métadonnées](screenshots/meta.png)
+![Fenêtre conversions](screenshots/convert.png)
+![Fenêtre options](screenshots/options.png)
 ![Fenêtre aide](screenshots/aide.png)
 
 ---
@@ -29,7 +29,7 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
   - [KLMP3-2.8.4-linux-x86_64.tar.gz](https://github.com/mrklm/klmp3/releases)
 
 - 🍎 **macOS**
-  - [KLMP3-2.8.4-macOS-x86_64.dmg](https://github.com/mrklm/klmp3/releases)
+  - [KLMP3-2.9.6-macOS-x86_64.dmg](https://github.com/mrklm/klmp3/releases)
 
 - 🪟 **Windows**  
   - [KLMP3-v2.8.5-windows-x86_64.zip](https://github.com/mrklm/klmp3/releases)
