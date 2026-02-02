@@ -84,6 +84,14 @@ NORM_MODE_PRECISE = "Précis (LUFS / TP / LRA)"
 
 
 # Bibli de thèmes (issus de Garage)
+
+# --- Version de l'application (utilisée pour le titre + vérification MAJ) ---
+APP_VERSION = "2.9.3"
+
+# --- Dépôt GitHub (release) pour la vérification MAJ ---
+APP_GITHUB_OWNER = "mrklm"
+APP_GITHUB_REPO = "klmp3"
+
 THEMES = {
     # ===== Thèmes sombres (sobres / quotidiens) =====
     "[Sombre] Midnight Garage": dict(
@@ -526,6 +534,71 @@ def _save_config(data: dict) -> None:
     except Exception:
         pass
 
+
+# ---------------- MAJ application (GitHub Releases) ----------------
+def _parse_semver_any(v: str) -> tuple[int, int, int]:
+    """Parse une version tolérante (ex: 'v2.9', '2.9.1', '2.9-beta')."""
+    v = (v or "").strip().lstrip("v").split("+")[0].split("-")[0]
+    parts = [p for p in v.split(".") if p != ""]
+    nums: list[int] = []
+    for p in parts[:3]:
+        try:
+            nums.append(int(p))
+        except Exception:
+            nums.append(0)
+    while len(nums) < 3:
+        nums.append(0)
+    return tuple(nums[:3])
+
+def _is_newer_version(remote: str, local: str) -> bool:
+    return _parse_semver_any(remote) > _parse_semver_any(local)
+
+def _fetch_latest_github_release(owner: str, repo: str, timeout: int = 8) -> dict | None:
+    """Retourne le JSON de la dernière release GitHub (ou None)."""
+    api_url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
+    try:
+        req = urllib.request.Request(api_url, headers={"User-Agent": f"{repo}-update-check"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read().decode("utf-8", errors="replace"))
+    except Exception:
+        return None
+
+def _pick_release_asset_for_platform(release_json: dict) -> tuple[str, str] | None:
+    """Choisit un asset adapté à l'OS courant. Retourne (filename, url) ou None."""
+    sysname = platform.system().lower()  # windows, darwin, linux
+    if sysname == "windows":
+        exts = (".exe", ".zip")
+    elif sysname == "darwin":
+        exts = (".dmg", ".zip")
+    else:
+        exts = (".appimage", ".tar.gz", ".zip")
+
+    assets = release_json.get("assets", []) or []
+    for a in assets:
+        name = (a.get("name") or "")
+        url = a.get("browser_download_url")
+        if not url:
+            continue
+        lower = name.lower()
+        for ext in exts:
+            if lower.endswith(ext):
+                return name, url
+    return None
+
+def _downloads_dir() -> str:
+    """Dossier Téléchargements (simple, multi-OS)."""
+    return os.path.join(os.path.expanduser("~"), "Downloads")
+
+def _download_file(url: str, dst_path: str, timeout: int = 60) -> None:
+    """Télécharge une URL vers dst_path (stream)."""
+    req = urllib.request.Request(url, headers={"User-Agent": "KLMp3"})
+    with urllib.request.urlopen(req, timeout=timeout) as r, open(dst_path, "wb") as f:
+        while True:
+            chunk = r.read(1024 * 64)
+            if not chunk:
+                break
+            f.write(chunk)
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -533,7 +606,8 @@ class App(tk.Tk):
         self.ff = find_ffmpeg_tools_first()
         self.ffmpeg_path = self.ff.ffmpeg
         self.ffprobe_path = self.ff.ffprobe
-        self.title("KLMP3 - v2.9.2")
+        self.APP_VERSION = APP_VERSION
+        self.title(f"KLMP3 - v{self.APP_VERSION}")
         self.geometry("820x620")
         self.minsize(780, 560)
 
@@ -643,6 +717,8 @@ class App(tk.Tk):
 
         self._check_tools()
         self._refresh_url_buttons()
+        # Vérification MAJ de l'application (non bloquant) — une fois au démarrage
+        self._check_app_update_on_startup()
 
         # Onglet par défaut : Général
         self.nb.select(self.tab_general)
@@ -1071,12 +1147,150 @@ class App(tk.Tk):
             text="(Télécharge la dernière version officielle et l'installe dans un dossier utilisateur.)"
         ).pack(side="left", padx=(10, 0))
 
+        # --- MAJ de l'application (information + téléchargement) ---
+        ttk.Separator(frm_updates, orient="horizontal").pack(fill="x", padx=10, pady=(8, 8))
+
+        row_app_up = ttk.Frame(frm_updates)
+        row_app_up.pack(fill="x", padx=10, pady=(0, 8))
+
+        self.lbl_app_update = ttk.Label(row_app_up, text="⏳ Vérification des mises à jour…")
+        self.lbl_app_update.pack(side="left")
+
+        self.btn_app_download = ttk.Button(
+            row_app_up,
+            text="Télécharger",
+            command=self._download_app_update,
+            state="disabled"
+        )
+        self.btn_app_download.pack(side="left", padx=(10, 0))
+
+
 
         # --- Cookies YouTube (optionnel) ---
 
 
         ttk.Frame(parent).pack(fill="both", expand=True)
         
+    # ---------------- MAJ application ----------------
+    def _set_app_update_status(self, status: str, tag: str | None = None, asset: tuple[str, str] | None = None, page_url: str | None = None):
+        """Met à jour la ligne + le bouton dans l'onglet Options."""
+        # status: 'checking' | 'none' | 'available' | 'available_no_asset' | 'error'
+        self._app_update_info = {
+            "tag": tag,
+            "asset": asset,
+            "page_url": page_url,
+        }
+
+        if not hasattr(self, "lbl_app_update") or not hasattr(self, "btn_app_download"):
+            return
+
+        if status == "checking":
+            self.lbl_app_update.configure(text="⏳ Vérification des mises à jour…")
+            self.btn_app_download.configure(state="disabled", text="Télécharger")
+            return
+
+        if status == "none":
+            self.lbl_app_update.configure(text="✅ Pas de nouvelle version de KLmp3 disponible")
+            self.btn_app_download.configure(state="disabled", text="Télécharger")
+            return
+
+        if status == "available" and tag and asset:
+            self.lbl_app_update.configure(text=f"🆕 Nouvelle version disponible ({tag}), cliquez ici pour la télécharger")
+            # Clic sur le texte = téléchargement
+            self.lbl_app_update.bind("<Button-1>", lambda _e: self._download_app_update())
+            self.lbl_app_update.configure(cursor="hand2")
+            self.btn_app_download.configure(state="normal", text="Télécharger")
+            return
+
+        if status == "available_no_asset" and tag:
+            self.lbl_app_update.configure(text=f"🆕 Nouvelle version disponible ({tag}) — aucun fichier compatible trouvé")
+            self.lbl_app_update.configure(cursor="")
+            self.lbl_app_update.unbind("<Button-1>")
+            # Fallback: bouton ouvre la page de release
+            self.btn_app_download.configure(state="normal", text="Ouvrir")
+            return
+
+        # error (silencieux côté utilisateur, on évite de spammer)
+        self.lbl_app_update.configure(text="ℹ️ Vérification des mises à jour indisponible")
+        self.btn_app_download.configure(state="disabled", text="Télécharger")
+
+    def _check_app_update_on_startup(self):
+        """Vérifie la dernière release GitHub sans bloquer l'UI (une fois au démarrage)."""
+        self._set_app_update_status("checking")
+
+        def worker():
+            rel = _fetch_latest_github_release(APP_GITHUB_OWNER, APP_GITHUB_REPO, timeout=8)
+            if not rel:
+                self.after(0, lambda: self._set_app_update_status("error"))
+                return
+
+            tag = (rel.get("tag_name") or "").strip()
+            page_url = rel.get("html_url") or None
+            if not tag:
+                self.after(0, lambda: self._set_app_update_status("error"))
+                return
+
+            if not _is_newer_version(tag, self.APP_VERSION):
+                self.after(0, lambda: self._set_app_update_status("none", tag=tag, page_url=page_url))
+                return
+
+            asset = _pick_release_asset_for_platform(rel)
+            if not asset:
+                self.after(0, lambda: self._set_app_update_status("available_no_asset", tag=tag, asset=None, page_url=page_url))
+                return
+
+            self.after(0, lambda: self._set_app_update_status("available", tag=tag, asset=asset, page_url=page_url))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _download_app_update(self):
+        """Télécharge l'asset de MAJ dans le dossier Téléchargements."""
+        info = getattr(self, "_app_update_info", None) or {}
+        asset = info.get("asset")
+        page_url = info.get("page_url")
+
+        # Si on n'a pas d'asset, le bouton sert de fallback (ouvrir la page).
+        if not asset:
+            if page_url:
+                try:
+                    import webbrowser
+                    webbrowser.open(page_url)
+                except Exception:
+                    pass
+            return
+
+        filename, url = asset
+        dl_dir = _downloads_dir()
+        os.makedirs(dl_dir, exist_ok=True)
+        dst_path = os.path.join(dl_dir, filename)
+
+        # UI : désactive pendant le download
+        if hasattr(self, "btn_app_download"):
+            self.btn_app_download.configure(state="disabled")
+
+        def worker():
+            try:
+                _download_file(url, dst_path, timeout=120)
+                self.after(0, lambda: messagebox.showinfo(
+                    "Téléchargement terminé",
+                    "Fichier téléchargé dans le dossier Téléchargements."
+                ))
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror(
+                    "Erreur",
+                    f"Le téléchargement a échoué.\n\nDétail : {e}"
+                ))
+            finally:
+                # Réactive le bouton si update toujours dispo
+                def _restore():
+                    info2 = getattr(self, "_app_update_info", None) or {}
+                    if info2.get("asset"):
+                        self.btn_app_download.configure(state="normal")
+                self.after(0, _restore)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+
     def update_ytdlp_for_user(self):
         """Met à jour yt-dlp pour l'utilisateur (binaire) dans un dossier écrivable."""
         if getattr(self, "_ytdlp_update_running", False):
@@ -1723,7 +1937,7 @@ class App(tk.Tk):
                     self.after(0, self._finish, False, final_msg)
                     return
 
-            self.after(0, self._finish, True, f"{len(urls)} Fichiers Téléchargés et convertis.")
+            self.after(0, self._finish, True, f"{len(urls)} URL traitée(s) avec succès.")
 
         except Exception as e:
             self.after(0, self._finish, False, str(e))

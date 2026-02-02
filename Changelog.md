@@ -7,6 +7,14 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.9.3] – 2026-02-01
+
+Ajouté
+
+ - Option de téléchargement de KLmp3 avec vérification de version dans l'onglet options
+
+---
+
 [2.9.2] – 2026-02-01
 
 Modifié
