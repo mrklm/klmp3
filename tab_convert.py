@@ -62,11 +62,6 @@ class ConvertTab(ttk.Frame):
         if not os.path.isdir(desktop):
             default_dest = os.path.join(os.path.expanduser("~"), f"klmp3conversions{stamp}")
 
-        try:
-            os.makedirs(default_dest, exist_ok=True)
-        except Exception:
-            pass
-
         self.dest_dir_var = tk.StringVar(value=default_dest)
 
         self.keep_metadata_var = tk.BooleanVar(value=True)
@@ -383,10 +378,7 @@ class ConvertTab(ttk.Frame):
         if d:
             d = os.path.normpath(d)
             self.dest_dir_var.set(d)
-            try:
-                os.makedirs(d, exist_ok=True)
-            except Exception:
-                pass
+
 
     # ---------------- Format/Quality mapping ----------------
 
@@ -460,9 +452,20 @@ class ConvertTab(ttk.Frame):
             return
 
         dest = self.dest_dir_var.get().strip()
-        if not dest or not os.path.isdir(dest):
+        if not dest:
             self._log("Dossier de destination invalide.")
             return
+
+        dest = os.path.normpath(dest)
+
+        # Créer le dossier seulement au lancement de la conversion
+        if not os.path.isdir(dest):
+            try:
+                os.makedirs(dest, exist_ok=True)
+            except Exception as e:
+                self._log(f"Dossier de destination invalide : {e}")
+                return
+
 
         ffmpeg = getattr(self.app, "ffmpeg_path", None)
         if not ffmpeg or not os.path.isfile(ffmpeg):

@@ -8,6 +8,12 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.9.6] – 2026-02-02
+
+Modifié
+
+ - Plus de création de répertoire "conversion" à l'ouverture du programme
+
 [2.9.5] – 2026-02-02
 
 Modifié
