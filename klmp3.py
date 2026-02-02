@@ -86,7 +86,7 @@ NORM_MODE_PRECISE = "Précis (LUFS / TP / LRA)"
 # Bibli de thèmes (issus de Garage)
 
 # --- Version de l'application (utilisée pour le titre + vérification MAJ) ---
-APP_VERSION = "2.9.3"
+APP_VERSION = "2.9.4"
 
 # --- Dépôt GitHub (release) pour la vérification MAJ ---
 APP_GITHUB_OWNER = "mrklm"
@@ -1153,16 +1153,17 @@ class App(tk.Tk):
         row_app_up = ttk.Frame(frm_updates)
         row_app_up.pack(fill="x", padx=10, pady=(0, 8))
 
-        self.lbl_app_update = ttk.Label(row_app_up, text="⏳ Vérification des mises à jour…")
-        self.lbl_app_update.pack(side="left")
-
         self.btn_app_download = ttk.Button(
             row_app_up,
             text="Télécharger",
             command=self._download_app_update,
             state="disabled"
         )
-        self.btn_app_download.pack(side="left", padx=(10, 0))
+        self.btn_app_download.pack(side="left")
+
+        self.lbl_app_update = ttk.Label(row_app_up, text="⏳ Vérification des mises à jour…")
+        self.lbl_app_update.pack(side="left", padx=(10, 0))
+
 
 
 
@@ -1195,7 +1196,7 @@ class App(tk.Tk):
             return
 
         if status == "available" and tag and asset:
-            self.lbl_app_update.configure(text=f"🆕 Nouvelle version disponible ({tag}), cliquez ici pour la télécharger")
+            self.lbl_app_update.configure(text=f"🆕 Nouvelle version de KLmp3 disponible ({tag}), cliquez ici pour la télécharger")
             # Clic sur le texte = téléchargement
             self.lbl_app_update.bind("<Button-1>", lambda _e: self._download_app_update())
             self.lbl_app_update.configure(cursor="hand2")
@@ -1203,7 +1204,7 @@ class App(tk.Tk):
             return
 
         if status == "available_no_asset" and tag:
-            self.lbl_app_update.configure(text=f"🆕 Nouvelle version disponible ({tag}) — aucun fichier compatible trouvé")
+            self.lbl_app_update.configure(text=f"🆕 Nouvelle version disponible de KLmp3 ({tag}) — aucun fichier compatible trouvé")
             self.lbl_app_update.configure(cursor="")
             self.lbl_app_update.unbind("<Button-1>")
             # Fallback: bouton ouvre la page de release
