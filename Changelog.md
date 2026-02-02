@@ -5,9 +5,28 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 
 
+
 ---
 
-[2.9.3] – 2026-02-01
+[2.9.5] – 2026-02-02
+
+Modifié
+
+ - Réorganisation des onglets métadonnées & conversion
+
+---
+
+[2.9.4] – 2026-02-02
+
+Modifié
+
+ - Interversion bouton texte dans la section téléchargement de KLmp3 
+
+ - Modification du texte dans la section téléchargement de KLmp3 
+
+---
+
+[2.9.3] – 2026-02-2
 
 Ajouté
 

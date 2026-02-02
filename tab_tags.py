@@ -146,8 +146,9 @@ class TagsTab:
         root.pack(fill="both", expand=True, padx=10, pady=10)
 
         # 1) Actions EN HAUT, centrées, pleine largeur
-        frm_act = ttk.LabelFrame(root, text="Actions")
-        frm_act.pack(fill="x", pady=(0, 10))
+        frm_act = ttk.Frame(root)
+        frm_act.pack(fill="x", pady=(0, 2))
+
 
         # frame interne centré
         act_inner = ttk.Frame(frm_act)
@@ -224,31 +225,36 @@ class TagsTab:
 
         out_row = ttk.Frame(frm_out)
         out_row.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
-        out_row.columnconfigure(0, weight=1)
+        out_row.columnconfigure(1, weight=1)
 
-        ttk.Entry(out_row, textvariable=self.outdir_var).grid(row=0, column=0, sticky="ew")
-        ttk.Button(out_row, text="Choisir…", command=self.pick_outdir).grid(row=0, column=1, padx=(8, 0))
+        ttk.Button(out_row, text="Choisir…", command=self.pick_outdir).grid(
+            row=0, column=0, padx=(0, 8)
+        )
+        ttk.Entry(out_row, textvariable=self.outdir_var).grid(
+            row=0, column=1, sticky="ew"
+        )
+
 
         # -------- DROITE : Cover + Métadonnées --------
 
         frm_cover = ttk.LabelFrame(right, text="Image de couverture")
-        frm_cover.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        frm_cover.grid(row=0, column=0, sticky="ew", pady=(0, 1))
         frm_cover.columnconfigure(1, weight=1)
 
         ttk.Checkbutton(frm_cover, text="Ajouter une couverture", variable=self.enable_cover_var).grid(
-            row=0, column=0, columnspan=2, sticky="w", padx=10, pady=(8, 6)
+            row=0, column=0, columnspan=2, sticky="w", padx=10, pady=(6, 4)
         )
 
-        ttk.Label(frm_cover, text="Fichier image :").grid(row=1, column=0, sticky="w", padx=10, pady=(0, 8))
-        ttk.Entry(frm_cover, textvariable=self.cover_path_var).grid(row=1, column=1, sticky="ew", padx=10, pady=(0, 8))
-        ttk.Button(frm_cover, text="Choisir…", command=self.pick_cover).grid(row=1, column=2, sticky="e", padx=(0, 10), pady=(0, 8))
+        ttk.Label(frm_cover, text="Fichier image :").grid(row=1, column=0, sticky="w", padx=10, pady=(0, 1))
+        ttk.Entry(frm_cover, textvariable=self.cover_path_var).grid(row=1, column=1, sticky="ew", padx=10, pady=(0, 1))
+        ttk.Button(frm_cover, text="Choisir…", command=self.pick_cover).grid(row=1, column=2, sticky="e", padx=(0, 10), pady=(0, 1))
 
         frm_meta = ttk.LabelFrame(right, text="")
         frm_meta.grid(row=1, column=0, sticky="ew")
         frm_meta.columnconfigure(1, weight=1)
 
         ttk.Checkbutton(frm_meta, text="Appliquer les métadonnées", variable=self.enable_tags_var).grid(
-            row=0, column=0, columnspan=2, sticky="w", padx=10, pady=(8, 6)
+            row=0, column=0, columnspan=2, sticky="w", padx=10, pady=(4, 6)
         )
 
         # Champs (pilotés depuis Options si l'utilisateur le souhaite)

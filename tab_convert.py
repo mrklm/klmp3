@@ -87,18 +87,18 @@ class ConvertTab(ttk.Frame):
 
     def _build_ui(self):
         # 2 colonnes (gauche / droite) + 2 lignes (Actions / contenu)
-        self.columnconfigure(0, weight=1)
-        self.columnconfigure(1, weight=2)
+        self.columnconfigure(0, weight=7, uniform="cols")
+        self.columnconfigure(1, weight=5, uniform="cols")
         self.rowconfigure(0, weight=0)
         self.rowconfigure(1, weight=1)
 
         # ---- Actions (pleine largeur)
-        frm_act = ttk.LabelFrame(self, text="Actions")
-        frm_act.grid(row=0, column=0, columnspan=2, sticky="ew", padx=10, pady=(10, 6))
+        frm_act = ttk.Frame(self)
+        frm_act.grid(row=0, column=0, columnspan=2, sticky="ew", padx=10, pady=(6, 4))
         frm_act.columnconfigure(0, weight=1)
 
         act_inner = ttk.Frame(frm_act)
-        act_inner.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+        act_inner.grid(row=0, column=0, sticky="ew", padx=10, pady=(6, 6))
 
         # [spacer] [Convertir] [Progress] [Stop] [spacer]
         act_inner.columnconfigure(0, weight=1)
@@ -166,18 +166,19 @@ class ConvertTab(ttk.Frame):
         # ---- Droite : destination + format/qualité + options
         row_dest = ttk.Frame(right)
         row_dest.pack(fill="x", pady=(0, 10))
-        row_dest.columnconfigure(1, weight=1)
+        row_dest.columnconfigure(0, weight=1)
 
-        ttk.Button(
+        self.btn_dest = ttk.Button(
             row_dest,
             text="Sélectionner destination",
             command=self._select_dest,
             padding=(8, 1),
-        ).grid(row=0, column=0, sticky="w", padx=(0, 8))
+        )
+        self.btn_dest.grid(row=0, column=0, sticky="ew")
 
         # IMPORTANT: création de l'Entry (sinon AttributeError ent_dest)
         self.ent_dest = ttk.Entry(row_dest, textvariable=self.dest_dir_var)
-        self.ent_dest.grid(row=0, column=1, sticky="ew")
+        self.ent_dest.grid(row=1, column=0, sticky="ew", pady=(6, 0))
 
         frm_fmt = ttk.Frame(right)
         frm_fmt.pack(fill="x")
@@ -187,9 +188,9 @@ class ConvertTab(ttk.Frame):
         row_fq = ttk.Frame(frm_fmt)
         row_fq.grid(row=1, column=0, sticky="ew", pady=(4, 12))
         row_fq.columnconfigure(0, weight=0)
-        row_fq.columnconfigure(1, weight=0)
-        row_fq.columnconfigure(2, weight=0)
+        row_fq.columnconfigure(1, weight=1)
 
+        # Format (ligne 1)
         self.cmb_format = ttk.Combobox(
             row_fq,
             values=self.FORMATS,
@@ -200,26 +201,36 @@ class ConvertTab(ttk.Frame):
         self.cmb_format.grid(row=0, column=0, sticky="w")
         self.cmb_format.bind("<<ComboboxSelected>>", lambda _e: self._on_format_changed())
 
-        ttk.Label(row_fq, text="Par défaut :").grid(row=0, column=1, sticky="w", padx=(16, 6))
-
+        # Qualité (ligne 2, sous le format)
         self.cmb_quality = ttk.Combobox(
             row_fq,
             state="readonly",
             textvariable=self.quality_var,
             width=10,
         )
-        self.cmb_quality.grid(row=0, column=2, sticky="w")
+        self.cmb_quality.grid(row=1, column=0, sticky="w", pady=(6, 0))
         self.cmb_quality.bind("<<ComboboxSelected>>", lambda _e: self._apply_quality_to_app())
 
-        ttk.Checkbutton(frm_fmt, text="Normaliser", variable=self.normalize_var).grid(
-            row=2, column=0, sticky="w", pady=(0, 4)
-        )
+        # Indications (sous la qualité)
+        self.lbl_quality_hint = ttk.Label(row_fq, text="")
+        self.lbl_quality_hint.grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        
+        frm_fmt.columnconfigure(1, weight=1)
+
+        # Normaliser (réglages dans Options) — décoché par défaut via self.normalize_var
+        ttk.Checkbutton(
+            frm_fmt,
+            text="Normaliser - Voir options pour réglages",
+            variable=self.normalize_var
+        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 4))
+
         ttk.Checkbutton(frm_fmt, text="Conserver les métadonnées", variable=self.keep_metadata_var).grid(
             row=3, column=0, sticky="w"
         )
         ttk.Checkbutton(frm_fmt, text="Supprimer la source après conversion", variable=self.delete_source_var).grid(
             row=4, column=0, sticky="w", pady=(0, 12)
         )
+
 
         self._log("Prêt. Sélectionnez un ou plusieurs fichiers à convertir.")
 
@@ -404,7 +415,23 @@ class ConvertTab(ttk.Frame):
             self.cmb_quality.configure(values=[])
             self.quality_var.set("")
 
+        self._update_quality_hint(fmt)
         self._apply_quality_to_app()
+
+
+    def _update_quality_hint(self, fmt: str) -> None:
+        # Texte d'aide affiché sous la combobox Qualité (même esprit que l'onglet Options)
+        hints = {
+            "mp3": "MP3 : 0 = meilleure qualité / 9 = plus petit fichier",
+            "m4a": "M4A/AAC : choisissez un débit (ex: 192k, 256k)",
+            "opus": "OPUS : choisissez un débit (ex: 128k, 160k)",
+            "flac": "FLAC : niveau 0–8 (compression, qualité identique)",
+            "ogg": "OGG/Vorbis : 0 = meilleure qualité / 10 = plus petit fichier",
+            "wav": "WAV : sans perte (fichiers volumineux)",
+        }
+        hint = hints.get(fmt, "")
+        if hasattr(self, "lbl_quality_hint") and self.lbl_quality_hint is not None:
+            self.lbl_quality_hint.configure(text=hint)
 
     def _apply_quality_to_app(self):
         fmt = (self.app.audio_format_var.get() or "mp3").strip().lower()
