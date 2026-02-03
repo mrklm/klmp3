@@ -68,10 +68,6 @@ def _setup_ssl_certificates() -> None:
 # Important : faire ça le plus tôt possible, avant tout accès réseau.
 _setup_ssl_certificates()
 
-
-MAX_URLS = 10
-
-
 # Téléchargement : modes
 DL_MODE_SINGLE = "Un seul fichier"
 DL_MODE_PLAYLIST = "La playlist complète"
@@ -622,19 +618,13 @@ class App(tk.Tk):
         self.stop_flag = threading.Event()
         self.active_proc = None  # subprocess.Popen courant (yt-dlp/ffmpeg)
 
-        
-        # --- Thread-safe UI log ---
+                # --- Thread-safe UI log ---
         self._log_queue: list[str] = []
         self._log_flush_scheduled = False
 
-
-
-        # URL queue (up to 10 entries)
-        self.url_vars: list[tk.StringVar] = [tk.StringVar()]
-        self.url_entries: list[ttk.Entry] = []
-
-        
-        self._focused_url_index: int = 0
+        # URL (mono)
+        self.url_var = tk.StringVar(value="")
+        self.url_entry: ttk.Entry | None = None
 
         # Playlist / single
         self.download_mode_var = tk.StringVar(value=DL_MODE_SINGLE)
@@ -645,8 +635,6 @@ class App(tk.Tk):
 
         # Config persistée (config.json dans dossier utilisateur)
         self._config = _load_config()
-
-
 
         # Format (6 formats) — MP3 par défaut
         self.audio_format_var = tk.StringVar(value="mp3")
@@ -716,7 +704,6 @@ class App(tk.Tk):
         self._update_advanced_controls()
 
         self._check_tools()
-        self._refresh_url_buttons()
         # Vérification MAJ de l'application (non bloquant) — une fois au démarrage
         self._check_app_update_on_startup()
 
@@ -791,7 +778,6 @@ class App(tk.Tk):
         frm_urls.columnconfigure(1, weight=1)
 
         self._rebuild_url_entries()
-        self._refresh_url_buttons()
 
         # Ligne "Télécharger" (single vs playlist)
         frm_dl = ttk.Frame(self.tab_general)
@@ -1420,58 +1406,23 @@ class App(tk.Tk):
         else:
             self.w_mp3.pack(side="left")
 
-    # ---------------- URL rows ----------------
+    # ----------------Mono URL ----------------
 
     def _rebuild_url_entries(self):
+        # Un seul champ URL (mono)
         for child in self.frm_url_entries.winfo_children():
             child.destroy()
-        self.url_entries.clear()
 
-        for i, var in enumerate(self.url_vars):
-            ent = ttk.Entry(self.frm_url_entries, textvariable=var)
-            ent.grid(row=i, column=0, sticky="ew", pady=(4 if i == 0 else 6, 0))
-            ent.bind("<FocusIn>", lambda e, idx=i: self._set_focused_url_index(idx))
-            ent.bind("<KeyRelease>", lambda e: self._update_download_controls())
-            self.url_entries.append(ent)
-
+        ent = ttk.Entry(self.frm_url_entries, textvariable=self.url_var)
+        ent.grid(row=0, column=0, sticky="ew", pady=(4, 0))
+        ent.bind("<KeyRelease>", lambda e: self._update_download_controls())
         self.frm_url_entries.columnconfigure(0, weight=1)
-    def _refresh_url_buttons(self):
-        n = len(self.url_vars)
 
-        # Les boutons + / - ont été retirés de l'UI.
-        # On garde la logique multi-lignes (paste_urls peut encore en créer),
-        # mais on ne tente plus de piloter des boutons inexistants.
-        if not hasattr(self, "btn_add") or not hasattr(self, "btn_remove"):
-            return
-
-        self.btn_add.configure(state=("normal" if n < MAX_URLS else "disabled"))
-        self.btn_remove.configure(state=("normal" if n > 1 else "disabled"))
-
-
-    def add_url_row(self):
-        if len(self.url_vars) >= MAX_URLS:
-            return
-        self.url_vars.append(tk.StringVar())
-        self._rebuild_url_entries()
-        self._refresh_url_buttons()
-
-    def remove_url_row(self):
-        if len(self.url_vars) <= 1:
-            return
-        self.url_vars.pop()
-        self._rebuild_url_entries()
-        self._refresh_url_buttons()
-
-    # -------------- Helpers --------------
-
-
+        self.url_entry = ent  # mémorise le champ unique
 
 
     def paste_urls(self):
-        """Colle une ou plusieurs URLs depuis le presse-papiers.
-        - Si plusieurs URLs (http/https) sont détectées, elles sont réparties dans la file.
-        - Sinon, colle le texte brut dans la première ligne vide (ou la 1ère ligne).
-        """
+        """Colle une URL (mono). Si plusieurs URLs sont détectées, on ne garde que la première."""
         try:
             clip = self.clipboard_get()
         except Exception:
@@ -1482,65 +1433,30 @@ class App(tk.Tk):
             return
 
         urls = re.findall(r"https?://\S+", clip)
-        if not urls:
-            # fallback: 1ère ligne du presse-papiers
-            urls = [clip.splitlines()[0].strip()]
+        if urls:
+            u = urls[0]
+        else:
+            # fallback : 1ère ligne du presse-papiers
+            u = clip.splitlines()[0].strip()
 
-        changed = False
-        for u in urls:
-            u = u.strip().strip('\"').strip("'")
-            if not u:
-                continue
+        u = (u or "").strip().strip('"').strip("'")
+        if not u:
+            return
 
-            # Remplit d'abord une ligne vide existante
-            placed = False
-            for v in self.url_vars:
-                if not v.get().strip():
-                    v.set(u)
-                    placed = True
-                    changed = True
-                    break
-            if placed:
-                continue
+        self.url_var.set(u)
+        self._update_download_controls()
 
-            # Sinon, ajoute une nouvelle ligne si possible
-            if len(self.url_vars) >= MAX_URLS:
-                break
-            self.url_vars.append(tk.StringVar(value=u))
-            changed = True
 
-        if changed:
-            self._rebuild_url_entries()
-            self._refresh_url_buttons()
-    
     def cut_url(self):
-        """Efface l'URL active (sans modifier le presse-papiers)."""
-        idx = getattr(self, "_focused_url_index", 0)
-        if idx < 0 or idx >= len(self.url_vars):
-            idx = 0
-
-        self.url_vars[idx].set("")
+        """Efface l'URL (mono)."""
+        self.url_var.set("")
         self._update_download_controls()
-        self._refresh_url_buttons()
 
-    def _set_focused_url_index(self, idx: int):
-        try:
-            self._focused_url_index = int(idx)
-        except Exception:
-            self._focused_url_index = 0
-        self._update_download_controls()
 
     def _get_active_url(self) -> str:
-        idx = getattr(self, "_focused_url_index", 0)
-        if 0 <= idx < len(self.url_vars):
-            u = (self.url_vars[idx].get() or "").strip()
-            if u:
-                return u
-        for v in self.url_vars:
-            u = (v.get() or "").strip()
-            if u:
-                return u
-        return ""
+        """Retourne l'URL active (mono)."""
+        return (self.url_var.get() or "").strip()
+
 
     def _classify_url(self, url: str) -> str:
         """Retourne 'single', 'playlist', ou 'ambiguous' (surtout pour YouTube)."""
@@ -1815,12 +1731,13 @@ class App(tk.Tk):
         outdir = base_out
 
 
-        urls = [v.get().strip() for v in self.url_vars]
-        urls = [u for u in urls if u]
+        u = (self.url_var.get() or "").strip()
+        urls = [u] if u else []
 
         if not urls:
-            messagebox.showwarning("URL manquante", "Veuillez saisir au moins une URL YouTube ou Twitch.")
+            messagebox.showwarning("URL manquante", "Veuillez saisir une URL YouTube ou Twitch.")
             return
+
 
         if not os.path.isdir(outdir):
             try:
