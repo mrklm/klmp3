@@ -82,7 +82,7 @@ NORM_MODE_PRECISE = "Précis (LUFS / TP / LRA)"
 # Bibli de thèmes (issus de Garage)
 
 # --- Version de l'application (utilisée pour le titre + vérification MAJ) ---
-APP_VERSION = "2.9.6"
+APP_VERSION = "2.9.8"
 
 # --- Dépôt GitHub (release) pour la vérification MAJ ---
 APP_GITHUB_OWNER = "mrklm"
@@ -2127,7 +2127,8 @@ class App(tk.Tk):
                 deno_path = getattr(self, "deno_path", None)
                 if deno_path and os.path.isfile(deno_path):
                     ydl_opts["js_runtimes"] = {"deno": {"path": deno_path}}
-                    ydl_opts["remote_components"] = {"ejs:github"}
+                    ydl_opts["remote_components"] = ["ejs:github"]
+
                 else:
                     self.log("⚠️ Deno introuvable : certaines vidéos YouTube peuvent échouer (JS challenge).")
 

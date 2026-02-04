@@ -8,6 +8,13 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.9.8] – 2026-02-03
+
+Modifié
+
+ - yt-dlp chemin en cas de maj fonctionnel
+---
+
 [2.9.7] – 2026-02-03
 
 Modifié
