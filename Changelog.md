@@ -8,9 +8,17 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.10.2] – 2026-02-13
+
+Modifié
+
+ - L'option de récupération de pochette mise dans la categorie metadonnées de l'onglet options
+
+---
+
 [2.10.1] – 2026-02-13
 
-AJouté
+Ajouté
 
  - Cablage de la fonction récupération de la pochette youtube automatique
  - Ajout de la dependance Mutagen dans le requirements.txt 
@@ -19,7 +27,7 @@ AJouté
 
 [2.10.0] – 2026-02-13
 
-AJouté
+Ajouté
 
  - Fonction de récupération automatique de pochette (décochée par defaut dans options)
  - insére la pochette dans le fichier en métadonnée

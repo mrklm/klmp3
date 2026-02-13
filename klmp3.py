@@ -87,7 +87,7 @@ NORM_MODE_PRECISE = "Précis (LUFS / TP / LRA)"
 # Bibli de thèmes (issus de Garage)
 
 # --- Version de l'application (utilisée pour le titre + vérification MAJ) ---
-APP_VERSION = "2.10.0"
+APP_VERSION = "2.10.2"
 __version__ = APP_VERSION
 
 # --- Dépôt GitHub (release) pour la vérification MAJ ---
@@ -188,8 +188,6 @@ def is_youtube(url: str) -> bool:
 
 def which_or_none(cmd: str) -> str | None:
     return shutil.which(cmd)
-
-
 
 
 @dataclass(frozen=True)
@@ -678,7 +676,10 @@ class App(tk.Tk):
         self.ytdlp_path = self.ytdlp.path
 
         # Mode par défaut
-        self.ytdlp_mode = "module" if ytdlp_module_available() else "binary"
+        # - si un binaire yt-dlp est disponible (tools/…), on préfère 
+        # "binary" pour que le bouton Arrêter puisse tuer le process
+        # - sinon on utilise le module si disponible
+        self.ytdlp_mode = "binary" if getattr(self, "ytdlp_path", None) else ("module" if ytdlp_module_available() else "binary")
 
         if getattr(sys, "frozen", False):
             # En bundle PyInstaller :
@@ -1109,10 +1110,13 @@ class App(tk.Tk):
         self.normalization_mode_var.trace_add("write", _update_norm_precise_visibility)
         _update_norm_precise_visibility()
 
+        # --- Options → Métadonnées (auto) ---
+        frm_meta_auto = ttk.LabelFrame(parent, text="Métadonnées (automatique)")
+        frm_meta_auto.pack(fill="x", padx=10, pady=(0, 8))
 
         # --- Récupération pochette (YouTube) ---
-        row_fetch_cover = ttk.Frame(frm_norm)
-        row_fetch_cover.pack(fill="x", padx=10, pady=(0, 8))
+        row_fetch_cover = ttk.Frame(frm_meta_auto)
+        row_fetch_cover.pack(fill="x", padx=10, pady=(8, 4))
 
         ttk.Checkbutton(
             row_fetch_cover,
@@ -1122,12 +1126,9 @@ class App(tk.Tk):
 
         ttk.Label(
             row_fetch_cover,
-            text="(YouTube : extrait/recadre/insère la pochette ; playlist : crée aussi un cover.jpg à la racine)"
+            text="(Extrait/recadre/insère la pochette + playlist: cover.jpg à la racine)"
         ).pack(side="left", padx=(10, 0))
 
-        # --- Options → Métadonnées (auto) ---
-        frm_meta_auto = ttk.LabelFrame(parent, text="Métadonnées (automatique)")
-        frm_meta_auto.pack(fill="x", padx=10, pady=(0, 8))
 
         row_m1 = ttk.Frame(frm_meta_auto)
         row_m1.pack(fill="x", padx=10, pady=(8, 4))
@@ -1868,6 +1869,19 @@ class App(tk.Tk):
                 # 4️⃣ Si bloqué → exécution forcée
                 self.log("⚠️ Processus bloqué, arrêt forcé")
                 proc.kill()
+
+                # IMPORTANT: fermer les pipes pour débloquer la lecture côté run_subprocess()
+                try:
+                    if getattr(proc, "stdout", None):
+                        proc.stdout.close()
+                except Exception:
+                    pass
+                try:
+                    if getattr(proc, "stderr", None):
+                        proc.stderr.close()
+                except Exception:
+                    pass
+
 
         except Exception as e:
             self.log(f"⚠️ Erreur lors de l’arrêt du processus : {e}")
