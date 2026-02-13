@@ -8,6 +8,16 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.10.0] – 2026-02-13
+
+AJouté
+
+ - Fonction de récupération automatique de pochette (décochée par defaut dans options)
+ - insére la pochette dans le fichier en métadonnée
+ - ajoute un cover.jpg à la racine du répertoire si c'est une playlist 
+
+---
+
 [2.9.10] – 2026-02-13
 
 Modifié

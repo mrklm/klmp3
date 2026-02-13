@@ -82,7 +82,7 @@ NORM_MODE_PRECISE = "Précis (LUFS / TP / LRA)"
 # Bibli de thèmes (issus de Garage)
 
 # --- Version de l'application (utilisée pour le titre + vérification MAJ) ---
-APP_VERSION = "2.9.10"
+APP_VERSION = "2.10.0"
 __version__ = APP_VERSION
 
 # --- Dépôt GitHub (release) pour la vérification MAJ ---
@@ -659,6 +659,7 @@ class App(tk.Tk):
         self.square_cover_var = tk.BooleanVar(value=True)
         self.track_from_filename_var = tk.BooleanVar(value=True)
         self.title_from_filename_var = tk.BooleanVar(value=True)
+        self.fetch_cover_var = tk.BooleanVar(value=False)  # décoché par défaut 
 
         # UI refs
         self._logo_img = None  # keep ref
@@ -1068,19 +1069,28 @@ class App(tk.Tk):
 
         ttk.Label(row_norm, text="(réglage utilisé si 'Normaliser' est coché)").pack(side="left", padx=(10, 0))
 
+        # Frame “Précis” (on ne la pack PAS ici : la visibilité est gérée par la fonction)
         row_norm_precise = ttk.Frame(frm_norm)
-        row_norm_precise.pack(fill="x", padx=10, pady=(0, 8))
 
         ttk.Label(row_norm_precise, text="LUFS :").pack(side="left")
-        self.spin_lufs = ttk.Spinbox(row_norm_precise, textvariable=self.norm_target_i_var, from_=-30.0, to=-5.0, increment=0.5, width=6)
+        self.spin_lufs = ttk.Spinbox(
+            row_norm_precise, textvariable=self.norm_target_i_var,
+            from_=-30.0, to=-5.0, increment=0.5, width=6
+        )
         self.spin_lufs.pack(side="left", padx=(6, 16))
 
         ttk.Label(row_norm_precise, text="TP :").pack(side="left")
-        self.spin_tp = ttk.Spinbox(row_norm_precise, textvariable=self.norm_target_tp_var, from_=-6.0, to=0.0, increment=0.1, width=6)
+        self.spin_tp = ttk.Spinbox(
+            row_norm_precise, textvariable=self.norm_target_tp_var,
+            from_=-6.0, to=0.0, increment=0.1, width=6
+        )
         self.spin_tp.pack(side="left", padx=(6, 16))
 
         ttk.Label(row_norm_precise, text="LRA :").pack(side="left")
-        self.spin_lra = ttk.Spinbox(row_norm_precise, textvariable=self.norm_target_lra_var, from_=1, to=20, increment=1, width=5)
+        self.spin_lra = ttk.Spinbox(
+            row_norm_precise, textvariable=self.norm_target_lra_var,
+            from_=1, to=20, increment=1, width=5
+        )
         self.spin_lra.pack(side="left", padx=(6, 0))
 
         def _update_norm_precise_visibility(*_):
@@ -1090,11 +1100,26 @@ class App(tk.Tk):
             else:
                 row_norm_precise.pack_forget()
 
+        # Un seul trace_add (et APRES la définition)
         self.normalization_mode_var.trace_add("write", _update_norm_precise_visibility)
         _update_norm_precise_visibility()
 
 
-        
+        # --- Récupération pochette (YouTube) ---
+        row_fetch_cover = ttk.Frame(frm_norm)
+        row_fetch_cover.pack(fill="x", padx=10, pady=(0, 8))
+
+        ttk.Checkbutton(
+            row_fetch_cover,
+            text="Récupérer la pochette",
+            variable=self.fetch_cover_var
+        ).pack(side="left")
+
+        ttk.Label(
+            row_fetch_cover,
+            text="(YouTube : extrait/recadre/insère la pochette ; playlist : crée aussi un cover.jpg à la racine)"
+        ).pack(side="left", padx=(10, 0))
+
         # --- Options → Métadonnées (auto) ---
         frm_meta_auto = ttk.LabelFrame(parent, text="Métadonnées (automatique)")
         frm_meta_auto.pack(fill="x", padx=10, pady=(0, 8))

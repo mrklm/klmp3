@@ -7,7 +7,7 @@ set -euo pipefail
 
 APP_NAME="KLMP3"
 MAIN_PY="klmp3.py"
-ICON_PATH="assets/logo.png"
+ICON_PATH="assets/KLMP3.png"
 KEEP_BUILD_DIRS="0"
 
 ############################################
