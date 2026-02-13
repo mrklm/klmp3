@@ -82,7 +82,8 @@ NORM_MODE_PRECISE = "Précis (LUFS / TP / LRA)"
 # Bibli de thèmes (issus de Garage)
 
 # --- Version de l'application (utilisée pour le titre + vérification MAJ) ---
-APP_VERSION = "2.9.9"
+APP_VERSION = "2.9.10"
+__version__ = APP_VERSION
 
 # --- Dépôt GitHub (release) pour la vérification MAJ ---
 APP_GITHUB_OWNER = "mrklm"

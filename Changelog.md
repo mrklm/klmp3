@@ -8,6 +8,14 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.9.10] – 2026-02-13
+
+Modifié
+
+ - Versionnage lisible par le buld script Linux 
+
+---
+
 [2.9.9] – 2026-02-13
 
 Modifié
