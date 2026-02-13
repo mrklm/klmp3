@@ -8,11 +8,20 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.9.9] – 2026-02-13
+
+Modifié
+
+ - Sous Linux, les fichiers convertits arrivent dans un répertoire sur le bureau et non dans user
+ 
+---
+
 [2.9.8] – 2026-02-03
 
 Modifié
 
  - yt-dlp chemin en cas de maj fonctionnel
+
 ---
 
 [2.9.7] – 2026-02-03

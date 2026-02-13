@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 import threading
 import queue
 import subprocess
@@ -24,6 +25,51 @@ def _format_size(num_bytes: int) -> str:
         n /= 1024.0
     return f"{n:.2f} Po"
 
+def _desktop_dir() -> str:
+    """Retourne le dossier Bureau (Desktop) en respectant XDG sous Linux."""
+    home = os.path.expanduser("~")
+    desktop: str | None = None
+
+    # --- Linux : utiliser XDG (répertoire Bureau réel) ---
+    if not sys.platform.startswith("win") and sys.platform != "darwin":
+        # 1) xdg-user-dir (le plus fiable)
+        try:
+            p = subprocess.check_output(["xdg-user-dir", "DESKTOP"], text=True).strip()
+            if p and os.path.isdir(p):
+                desktop = p
+        except Exception:
+            pass
+
+        # 2) ~/.config/user-dirs.dirs (fallback)
+        if not desktop:
+            try:
+                cfg = os.path.join(home, ".config", "user-dirs.dirs")
+                if os.path.isfile(cfg):
+                    with open(cfg, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if line.startswith("XDG_DESKTOP_DIR="):
+                                v = line.split("=", 1)[1].strip().strip('"')
+                                v = v.replace("$HOME", home)
+                                if os.path.isdir(v):
+                                    desktop = v
+                                break
+            except Exception:
+                pass
+
+        # 3) derniers fallbacks “classiques”
+        if not desktop:
+            for cand in (os.path.join(home, "Desktop"), os.path.join(home, "Bureau")):
+                if os.path.isdir(cand):
+                    desktop = cand
+                    break
+
+    # --- macOS / Windows / fallback général ---
+    if not desktop:
+        cand = os.path.join(home, "Desktop")
+        desktop = cand if os.path.isdir(cand) else home
+
+    return desktop
 
 class ConvertTab(ttk.Frame):
     """
@@ -56,11 +102,9 @@ class ConvertTab(ttk.Frame):
         self._q: "queue.Queue[object]" = queue.Queue()
 
         # Destination par défaut : Bureau/klmp3conversionsAAMMJJ
-        desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+        desktop = _desktop_dir()
         stamp = datetime.now().strftime("%y%m%d")  # AAMMJJ
         default_dest = os.path.join(desktop, f"klmp3conversions{stamp}")
-        if not os.path.isdir(desktop):
-            default_dest = os.path.join(os.path.expanduser("~"), f"klmp3conversions{stamp}")
 
         self.dest_dir_var = tk.StringVar(value=default_dest)
 
