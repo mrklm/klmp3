@@ -72,6 +72,11 @@ need_dir "$TOOLS_DIR"
 need_file "$TOOLS_DIR/ffmpeg"
 need_file "$TOOLS_DIR/ffprobe"
 need_file "$TOOLS_DIR/appimagetool.AppImage"
+# Assurer les droits d'exécution (souvent perdus après zip/copie)
+chmod +x "$TOOLS_DIR/ffmpeg" "$TOOLS_DIR/ffprobe" "$TOOLS_DIR/appimagetool.AppImage" 2>/dev/null || true
+if [[ -f "$TOOLS_DIR/deno" ]]; then
+  chmod +x "$TOOLS_DIR/deno" 2>/dev/null || true
+fi
 
 if [[ ! -f "$TOOLS_DIR/deno" ]]; then
   say "⚠️  Deno absent (non bloquant)"
