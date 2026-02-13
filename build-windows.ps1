@@ -1,135 +1,115 @@
 <# 
-build-windows.ps1 — KLMP3 Windows portable (ZIP + SHA256)
-
+Build Windows — KLMP3
+- PyInstaller (onedir) + ZIP + SHA256
+- Embarque uniquement tools\windows-*
 Usage:
-  powershell -ExecutionPolicy Bypass -File .\build-windows.ps1 -Version 1.6
-  powershell -ExecutionPolicy Bypass -File .\build-windows.ps1 -Version 1.6 -Keep
-  powershell -ExecutionPolicy Bypass -File .\build-windows.ps1 -Version 1.6 -NoVenv
-
-Attendu à la racine du repo:
-  - klmp3.py
-  - assets\ (avec KLMP3.ico)
-  - tools\ (avec tools\windows-x86_64\yt-dlp.exe, ffmpeg.exe, ffprobe.exe, deno.exe, etc.)
-Sorties:
-  - dist\KLMP3\...
-  - releases\KLMP3-v<Version>-windows-x86_64.zip
-  - releases\KLMP3-v<Version>-windows-x86_64.zip.sha256
+  powershell -ExecutionPolicy Bypass -File .\build-windows.ps1
+  powershell -ExecutionPolicy Bypass -File .\build-windows.ps1 -Version 2.10.0
+  powershell -ExecutionPolicy Bypass -File .\build-windows.ps1 -Arch windows-x86_64
+  powershell -ExecutionPolicy Bypass -File .\build-windows.ps1 -Keep
 #>
 
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory = $false)]
-  [string]$Version = "1.6",
-
-  [Parameter(Mandatory = $false)]
+  [string]$Version = "",
   [string]$Arch = "windows-x86_64",
-
-  [Parameter(Mandatory = $false)]
-  [switch]$Keep,
-
-  [Parameter(Mandatory = $false)]
-  [switch]$NoVenv
+  [switch]$Keep
 )
 
 $ErrorActionPreference = "Stop"
 
+# Toujours travailler depuis le dossier du script (racine du repo)
+Set-Location -Path $PSScriptRoot
+Write-Host "📁 Repo : $PSScriptRoot"
+
 function Die($msg) {
-  Write-Host "❌ $msg" -ForegroundColor Red
+  Write-Host "❌ $msg"
   exit 1
 }
 
-# --- Basic sanity ---
-if (-not (Test-Path ".\klmp3.py")) { Die "klmp3.py introuvable (lance ce script à la racine du repo)." }
-if (-not (Test-Path ".\assets"))   { Die "Dossier assets/ introuvable." }
-if (-not (Test-Path ".\tools"))    { Die "Dossier tools/ introuvable." }
+# ---------- Constantes ----------
+$AppName    = "KLMP3"
+$EntryPy    = ".\klmp3.py"
+$AssetsDir  = ".\assets"
+$ToolsDir   = ".\tools\$Arch"
+$DistDir    = ".\dist"
+$BuildDir   = ".\build"
+$ReleasesDir = ".\releases"
 
-$iconPath = ".\assets\KLMP3.ico"
-if (-not (Test-Path $iconPath)) {
-  Write-Host "⚠️ Icône Windows absente : $iconPath (build OK, mais icône par défaut)." -ForegroundColor Yellow
-  $iconPath = $null
+# ---------- Sanity checks ----------
+if (-not (Test-Path $EntryPy))   { Die "Fichier introuvable : $EntryPy" }
+if (-not (Test-Path $AssetsDir)) { Die "Dossier introuvable : $AssetsDir" }
+if (-not (Test-Path $ToolsDir))  { Die "Dossier tools introuvable : $ToolsDir (embarquement Windows uniquement)" }
+
+# ---------- Version (si non fournie, on tente de la lire dans klmp3.py) ----------
+if ([string]::IsNullOrWhiteSpace($Version)) {
+  try {
+    $line = Select-String -Path $EntryPy -Pattern '^\s*APP_VERSION\s*=\s*"(.*)"\s*$' -List
+    if ($line) {
+      $Version = $line.Matches[0].Groups[1].Value
+      Write-Host "🔎 Version détectée depuis APP_VERSION : $Version"
+    }
+  } catch { }
 }
 
-# --- Activate venv if present and allowed ---
-if (-not $NoVenv) {
-  $venvActivate = ".\.venv\Scripts\Activate.ps1"
-  if (Test-Path $venvActivate) {
-    Write-Host "🐍 Activation venv : .venv" 
-    . $venvActivate
-  } else {
-    Write-Host "⚠️ Pas de venv détecté (.venv). On continue avec le Python courant." -ForegroundColor Yellow
-  }
-} else {
-  Write-Host "🧪 Option -NoVenv : venv non activé." -ForegroundColor Yellow
+if ([string]::IsNullOrWhiteSpace($Version)) {
+  Die "Version non fournie et APP_VERSION introuvable. Lancez avec -Version x.y.z"
 }
 
-# --- Show python ---
-try {
-  $py = (Get-Command python).Source
-  Write-Host "🐍 Python : $py"
-} catch {
-  Die "Python introuvable dans PATH. Installe Python ou active ton venv."
-}
-
-# --- Ensure build deps ---
-Write-Host "📦 Mise à jour pip / installation PyInstaller + yt-dlp (pip)…"
-python -m pip install --upgrade pip | Out-Host
-python -m pip install --upgrade pyinstaller yt-dlp | Out-Host
-
-# --- Clean build dirs ---
+# ---------- Nettoyage ----------
 if (-not $Keep) {
-  Write-Host "🧹 Nettoyage build/ dist/…"
-  Remove-Item -Recurse -Force .\build, .\dist -ErrorAction SilentlyContinue
+  Write-Host "🧹 Nettoyage build/ dist/ + *.spec…"
+  Remove-Item -Recurse -Force $BuildDir, $DistDir -ErrorAction SilentlyContinue
+  Remove-Item -Force .\*.spec -ErrorAction SilentlyContinue
 } else {
-  Write-Host "🧷 Option -Keep : on conserve build/ dist/." -ForegroundColor Yellow
+  Write-Host "♻️ Keep activé : pas de nettoyage build/dist/spec"
 }
 
-# --- Build PyInstaller ---
-Write-Host "🏗️  PyInstaller — build KLMP3.exe"
+# ---------- Prépare releases/ ----------
+New-Item -ItemType Directory -Force -Path $ReleasesDir | Out-Null
+
+# ---------- PyInstaller args ----------
 $pyiArgs = @(
   "--noconfirm",
   "--clean",
   "--windowed",
-  "--name", "KLMP3",
+  "--name", $AppName,
   "--add-data", "assets;assets",
-  "--add-data", "tools;tools"
+  # IMPORTANT: n'embarque que tools\windows-*
+  "--add-data", ("tools\$Arch;tools\$Arch")
 )
 
-if ($iconPath) {
-  $pyiArgs += @("--icon", $iconPath)
+# Icône si présente
+if (Test-Path ".\assets\ar.ico") {
+  $pyiArgs += @("--icon", ".\assets\ar.ico")
 }
 
-$pyiArgs += "klmp3.py"
+# Lancement PyInstaller
+Write-Host "🧱 PyInstaller (onedir)…"
+python -m PyInstaller @pyiArgs $EntryPy
+if ($LASTEXITCODE -ne 0) { Die "PyInstaller a échoué (code=$LASTEXITCODE)" }
 
-& pyinstaller @pyiArgs | Out-Host
+# ---------- Artefacts ----------
+$OutDir = Join-Path $DistDir $AppName
+if (-not (Test-Path $OutDir)) { Die "Dossier onedir introuvable : $OutDir" }
 
-# --- Verify output ---
-$exePath = ".\dist\KLMP3\KLMP3.exe"
-if (-not (Test-Path $exePath)) {
-  Die "Build terminé mais EXE introuvable : $exePath"
-}
+$ZipName = "$AppName-windows-$Arch-v$Version.zip"
+$ZipPath = Join-Path $ReleasesDir $ZipName
 
-# --- Release packaging ---
-$releasesDir = ".\releases"
-New-Item -ItemType Directory -Force -Path $releasesDir | Out-Null
+# ZIP (force écrasement)
+if (Test-Path $ZipPath) { Remove-Item -Force $ZipPath }
+Write-Host "📦 ZIP : $ZipName"
+Compress-Archive -Path (Join-Path $OutDir "*") -DestinationPath $ZipPath -Force
 
-$zipName = "KLMP3-v$Version-$Arch.zip"
-$zipPath = Join-Path $releasesDir $zipName
-$shaPath = "$zipPath.sha256"
+# SHA256
+$ShaFile = "SHA256SUMS-$AppName-v$Version.txt"
+$ShaPath = Join-Path $ReleasesDir $ShaFile
 
-Write-Host "📦 ZIP : $zipName"
-Remove-Item -Force $zipPath -ErrorAction SilentlyContinue
-Remove-Item -Force $shaPath -ErrorAction SilentlyContinue
+Write-Host "🔐 SHA256 : $ShaFile"
+$hash = (Get-FileHash -Algorithm SHA256 $ZipPath).Hash.ToLower()
+"$hash  $ZipName" | Out-File -FilePath $ShaPath -Encoding ascii
 
-Compress-Archive -Path ".\dist\KLMP3\*" -DestinationPath $zipPath -Force
-
-# --- SHA256 ---
-$hash = (Get-FileHash -Algorithm SHA256 $zipPath).Hash.ToLower()
-"$hash  $zipName" | Set-Content -Encoding ASCII $shaPath
-
-# --- Done ---
 Write-Host ""
-Write-Host "✅ EXE : $exePath" -ForegroundColor Green
-Write-Host "✅ ZIP : $zipPath" -ForegroundColor Green
-Write-Host "✅ SHA : $shaPath" -ForegroundColor Green
-Write-Host ""
-Write-Host "Astuce test: dézippe dans un dossier temporaire puis lance KLMP3.exe" -ForegroundColor Cyan
+Write-Host "✅ Build terminé."
+Write-Host "   - $ZipPath"
+Write-Host "   - $ShaPath"
