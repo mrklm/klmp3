@@ -65,6 +65,8 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 
 ⚡️ Fonction de mise à jour de YT-DLP (outil de téléchargement)
 
+⚡️ Vérification automatique si mise à jour KLmp3 disponnible  
+
 🗒️ Journal d’exécution intégré
 
 ---
