@@ -8,6 +8,15 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.10.1] – 2026-02-13
+
+AJouté
+
+ - Cablage de la fonction récupération de la pochette youtube automatique
+ - Ajout de la dependance Mutagen dans le requirements.txt 
+
+---
+
 [2.10.0] – 2026-02-13
 
 AJouté

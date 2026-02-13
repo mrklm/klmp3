@@ -36,6 +36,11 @@ from tab_convert import ConvertTab
 
 from PIL import Image, ImageTk
 
+from io import BytesIO
+
+# Pochette (insertion tags)
+from mutagen.id3 import ID3, APIC
+from mutagen.mp4 import MP4, MP4Cover
 
 # --- YouTube cookies-from-browser: labels for UI/log ---
 YTB_BROWSER_TOKEN_TO_LABEL = {
@@ -619,7 +624,7 @@ class App(tk.Tk):
         self.stop_flag = threading.Event()
         self.active_proc = None  # subprocess.Popen courant (yt-dlp/ffmpeg)
 
-                # --- Thread-safe UI log ---
+        # --- Thread-safe UI log ---
         self._log_queue: list[str] = []
         self._log_flush_scheduled = False
 
@@ -1634,6 +1639,37 @@ class App(tk.Tk):
             return downloaded_path
 
 
+    def _embed_cover_into_audio(self, filepath: str, jpeg_bytes: bytes) -> bool:
+        """Insère une pochette JPEG dans un fichier audio (MP3 ou M4A)."""
+        try:
+            ext = os.path.splitext(filepath)[1].lower()
+
+            if ext == ".mp3":
+                audio = ID3(filepath)
+                audio.delall("APIC")
+                audio.add(APIC(
+                    encoding=3,
+                    mime="image/jpeg",
+                    type=3,
+                    desc="Cover",
+                    data=jpeg_bytes
+                ))
+                audio.save(v2_version=3)
+                return True
+
+            elif ext in (".m4a", ".mp4"):
+                audio = MP4(filepath)
+                audio["covr"] = [MP4Cover(jpeg_bytes, imageformat=MP4Cover.FORMAT_JPEG)]
+                audio.save()
+                return True
+
+            return False
+
+        except Exception as e:
+            self.log(f"🖼️ Pochette : échec insertion ({e})")
+            return False
+
+
 
 
     def choose_outdir(self):
@@ -1887,23 +1923,235 @@ class App(tk.Tk):
             self.after(0, self._finish, False, str(e))
 
     # -------------- Download + Convert (unifié) --------------
+    
+    def _yt_thumbnail_url_best_effort(self, url: str) -> str | None:
+        """Retourne une URL de miniature YouTube (best effort).
 
-    def _pipeline_download_and_convert(self, url: str, outdir: str, fmt: str, platform: str, dl_mode: str, limit_on: bool, limit_n: int):
+        Stratégie:
+        - Essaie via le module yt_dlp si disponible.
+        - Sinon, essaie via le binaire yt-dlp (si présent).
+        - Choisit la meilleure miniature (surface max) si la liste 'thumbnails' existe,
+        sinon fallback sur le champ 'thumbnail'.
         """
-        Télécharge un fichier audio (intermédiaire) avec yt-dlp, puis convertit avec ffmpeg.
+        if self.stop_flag.is_set():
+            return None
+
+        # -------- 1) via module yt_dlp --------
+        try:
+            import yt_dlp  # type: ignore
+
+            ydl_opts = {
+                "quiet": True,
+                "no_warnings": True,
+                "skip_download": True,
+                "socket_timeout": 10,
+                "retries": 3,
+                "fragment_retries": 3,
+                # éviter de dérouler toute une playlist si jamais l’URL est ambiguë
+                "noplaylist": True,
+            }
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+
+            if isinstance(info, dict) and info.get("entries"):
+                # parfois, certaines URLs renvoient une structure playlist; on prend le 1er
+                try:
+                    first = next(iter(info["entries"]))
+                    if isinstance(first, dict):
+                        info = first
+                except Exception:
+                    pass
+
+            if not isinstance(info, dict):
+                return None
+
+            thumbs = info.get("thumbnails") or []
+            best_url = None
+            best_score = -1
+
+            for t in thumbs:
+                if self.stop_flag.is_set():
+                    return None
+                if not isinstance(t, dict):
+                    continue
+                u = t.get("url")
+                if not u:
+                    continue
+                w = int(t.get("width") or 0)
+                h = int(t.get("height") or 0)
+                score = w * h
+                if score > best_score:
+                    best_score = score
+                    best_url = u
+
+            if best_url:
+                return str(best_url)
+
+            u2 = info.get("thumbnail")
+            return str(u2) if u2 else None
+
+        except Exception:
+            pass
+
+        if self.stop_flag.is_set():
+            return None
+
+        # -------- 2) via binaire yt-dlp (secours) --------
+        try:
+            ytdlp_path = getattr(self, "ytdlp_path", None)
+            if not ytdlp_path:
+                return None
+
+            cmd = [
+                ytdlp_path,
+                "-J",
+                "--no-warnings",
+                "--no-playlist",
+                url,
+            ]
+            rc, out = self._run_subprocess_collect(cmd)
+            if rc != 0 or not out:
+                return None
+
+            data = json.loads(out)
+            if isinstance(data, dict) and data.get("entries"):
+                try:
+                    first = next(iter(data["entries"]))
+                    if isinstance(first, dict):
+                        data = first
+                except Exception:
+                    pass
+
+            if not isinstance(data, dict):
+                return None
+
+            thumbs = data.get("thumbnails") or []
+            best_url = None
+            best_score = -1
+
+            for t in thumbs:
+                if self.stop_flag.is_set():
+                    return None
+                if not isinstance(t, dict):
+                    continue
+                u = t.get("url")
+                if not u:
+                    continue
+                w = int(t.get("width") or 0)
+                h = int(t.get("height") or 0)
+                score = w * h
+                if score > best_score:
+                    best_score = score
+                    best_url = u
+
+            if best_url:
+                return str(best_url)
+
+            u2 = data.get("thumbnail")
+            return str(u2) if u2 else None
+
+        except Exception:
+            return None
+
+
+    def _cover_jpeg_bytes_from_url(self, img_url: str) -> bytes | None:
         """
-        # Template intermédiaire : on garde l'extension d'origine
+        Télécharge l'image, recadre au carré centré, resize 1000x1000, encode en JPEG.
+
+        Important:
+        - Respecte self.stop_flag (annulation utilisateur)
+        - Lecture réseau en "chunks" (évite un read() bloquant trop longtemps)
+        - Taille max de sécurité
+        """
+        if self.stop_flag.is_set():
+            return None
+
+        try:
+            req = urllib.request.Request(
+                img_url,
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+
+            # Timeout plus court: si le réseau/serveur traîne, on ne fige pas l'app trop longtemps
+            with urllib.request.urlopen(req, timeout=6) as r:
+                chunks: list[bytes] = []
+                total = 0
+                max_bytes = 20 * 1024 * 1024  # 20 MB (sécurité)
+
+                while True:
+                    if self.stop_flag.is_set():
+                        return None
+
+                    buf = r.read(64 * 1024)  # 64 KB
+                    if not buf:
+                        break
+
+                    total += len(buf)
+                    if total > max_bytes:
+                        return None
+
+                    chunks.append(buf)
+
+                raw = b"".join(chunks)
+
+        except Exception:
+            return None
+
+        if self.stop_flag.is_set():
+            return None
+
+        try:
+            im = Image.open(BytesIO(raw)).convert("RGB")
+        except Exception:
+            return None
+
+        if self.stop_flag.is_set():
+            return None
+
+        w, h = im.size
+        s = min(w, h)
+        left = (w - s) // 2
+        top = (h - s) // 2
+        im = im.crop((left, top, left + s, top + s))
+
+        if self.stop_flag.is_set():
+            return None
+
+        im = im.resize((1000, 1000))
+
+        out = BytesIO()
+        try:
+            im.save(out, format="JPEG", quality=92, optimize=True)
+        except Exception:
+            return None
+
+        return out.getvalue()
+
+    
+
+    def _pipeline_download_and_convert(
+        self,
+        url: str,
+        outdir: str,
+        fmt: str,
+        platform: str,
+        dl_mode: str,
+        limit_on: bool,
+        limit_n: int
+    ):
+        """
+        Télécharge un fichier audio (intermédiaire) avec yt-dlp,
+        puis convertit avec ffmpeg.
+        """
+
         url_outdir = outdir
 
         if platform == "youtube" and dl_mode == DL_MODE_PLAYLIST:
             self.log("📁 Préparation du dossier de playlist…")
             url_outdir = self._ensure_playlist_subdir(outdir, url)
 
-        # Modèle de nom de fichier :
-        # - Playlist : ajoute l'index de playlist
-        #   • si "Limité à" <= 99 => 2 chiffres (01..99)
-        #   • sinon => 3 chiffres (001..999)
-        # - Sinon : titre seul (pas d'ID YouTube entre crochets)
+        # Template nom de fichier
         if platform == "youtube" and dl_mode == DL_MODE_PLAYLIST:
             pad = 3
             if limit_on:
@@ -1914,12 +2162,16 @@ class App(tk.Tk):
                 if 1 <= n <= 99:
                     pad = 2
 
-            outtmpl = os.path.join(url_outdir, f"%(playlist_index)0{pad}d - %(title).200s.%(ext)s")
+            outtmpl = os.path.join(
+                url_outdir,
+                f"%(playlist_index)0{pad}d - %(title).200s.%(ext)s"
+            )
         else:
             outtmpl = os.path.join(url_outdir, "%(title).200s.%(ext)s")
 
         ok, downloaded = self._download_audio(
-            url, outtmpl,
+            url,
+            outtmpl,
             platform=platform,
             dl_mode=dl_mode,
             limit_on=limit_on,
@@ -1929,15 +2181,20 @@ class App(tk.Tk):
         if not ok:
             return False, downloaded
 
-        # downloaded peut être une str (1 vidéo) ou une liste (playlist)
-        downloaded_paths = [downloaded] if isinstance(downloaded, str) else list(downloaded)
+        downloaded_paths = (
+            [downloaded] if isinstance(downloaded, str)
+            else list(downloaded)
+        )
 
         converted = 0
+        final_path = ""
+
         for downloaded_path in downloaded_paths:
+
             if platform == "youtube" and dl_mode == DL_MODE_PLAYLIST:
                 downloaded_path = self._normalize_playlist_double_numbering(downloaded_path)
 
-            # Annulation utilisateur : avant conversion, on nettoie l'intermédiaire courant
+            # Annulation AVANT conversion
             if self.stop_flag.is_set():
                 self.log("⏹️ Annulation demandée — nettoyage en cours…")
                 self._cleanup_partials_for(downloaded_path, platform)
@@ -1945,6 +2202,7 @@ class App(tk.Tk):
 
             self.log(f"📦 Intermédiaire : {downloaded_path}")
 
+            # Conversion
             if self.normalize_enabled_var.get():
                 mode = self.normalization_mode_var.get().strip()
                 if mode == NORM_MODE_TWO_PASS:
@@ -1954,32 +2212,97 @@ class App(tk.Tk):
             else:
                 ok2, msg_or_final = self._convert_audio(downloaded_path, fmt)
 
-            
             if not ok2:
-                # Si l'utilisateur a annulé pendant ffmpeg, on nettoie tout de suite
                 if self.stop_flag.is_set():
                     self.log("🧹 Annulation pendant conversion — nettoyage…")
                     self._cleanup_partials_for(downloaded_path, platform)
-                return False, "⏹️ Annulé par l’utilisateur\n🧹 Fichiers temporaires nettoyés"
+                    return False, "⏹️ Annulé par l’utilisateur\n🧹 Fichiers temporaires nettoyés"
 
+                return False, msg_or_final
 
             final_path = msg_or_final
             self.log(f"🎧 Sortie : {final_path}")
             converted += 1
 
+            # Annulation AVANT pochette
+            if self.stop_flag.is_set():
+                self.log("⏹️ Annulation demandée — arrêt avant traitement pochette…")
+                self._cleanup_partials_for(downloaded_path, platform)
+                return False, "⏹️ Annulé par l’utilisateur\n🧹 Fichiers temporaires nettoyés"
 
-            # Nettoyage systématique de l'intermédiaire
-            self._safe_remove(downloaded_path)
+                        # --- Pochette YouTube (best effort) ---
+            try:
+                if platform == "youtube" and bool(self.fetch_cover_var.get()):
 
-            # Nettoyage des fragments HLS restants (Twitch laisse parfois des .part-FragXXX.part)
+                    if self.stop_flag.is_set():
+                        self.log("⏹️ Annulation demandée — arrêt avant récupération miniature…")
+                        self._cleanup_partials_for(downloaded_path, platform)
+                        return False, "⏹️ Annulé par l’utilisateur\n🧹 Fichiers temporaires nettoyés"
+
+                    self.log("🖼️ Pochette : récupération miniature YouTube…")
+                    thumb_url = self._yt_thumbnail_url_best_effort(url)
+
+                    if thumb_url:
+                        self.log("🖼️ Pochette : miniature OK")
+                        jpeg_bytes = self._cover_jpeg_bytes_from_url(thumb_url)
+
+                        if jpeg_bytes:
+
+                            # (optionnel mais utile) playlist : écrire un cover.jpg au niveau du dossier de playlist
+                            if platform == "youtube" and dl_mode == DL_MODE_PLAYLIST:
+                                try:
+                                    cover_path = os.path.join(url_outdir, "cover.jpg")
+                                    with open(cover_path, "wb") as f:
+                                        f.write(jpeg_bytes)
+                                    self.log(f"🖼️ Pochette : cover.jpg écrit ({cover_path})")
+                                except Exception as e:
+                                    self.log(f"🖼️ Pochette : impossible d’écrire cover.jpg ({e})")
+
+                            try:
+                                ok_cover = self._embed_cover_into_audio(final_path, jpeg_bytes)
+                                if ok_cover:
+                                    self.log("🖼️ Pochette : insérée dans le fichier")
+                                else:
+                                    self.log("🖼️ Pochette : format non géré (mp3/m4a uniquement)")
+                            except Exception as e:
+                                self.log(f"🖼️ Pochette : échec insertion ({e})")
+
+                        else:
+                            self.log("🖼️ Pochette : échec téléchargement/traitement image")
+                    else:
+                        self.log("🖼️ Pochette : miniature introuvable (best effort)")
+
+            finally:
+                # Nettoyage intermédiaire (robuste)
+                self._safe_remove(downloaded_path)
+
+                # Nettoyage “large” : .part + variantes usuelles autour du fichier intermédiaire
+                try:
+                    folder = os.path.dirname(downloaded_path)
+                    base = os.path.basename(downloaded_path)
+                    stem, _ext = os.path.splitext(base)
+
+                    # Fichiers partiels classiques
+                    self._safe_remove(os.path.join(folder, base + ".part"))
+                    self._safe_remove(os.path.join(folder, stem + ".part"))
+
+                    # Variantes d’extensions possibles (selon ce que yt-dlp sort)
+                    for ext in (".webm", ".m4a", ".mp4", ".opus", ".ogg", ".mkv"):
+                        candidate = os.path.join(folder, stem + ext)
+                        # sécurité : ne jamais supprimer le fichier final
+                        if os.path.abspath(candidate) != os.path.abspath(final_path):
+                            self._safe_remove(candidate)
+
+                except Exception:
+                    pass
+
+
+            # Nettoyage fragments Twitch éventuels
             if platform == "twitch":
                 try:
                     folder = os.path.dirname(downloaded_path)
                     base = os.path.basename(downloaded_path)
 
-                    # Deux styles vus selon versions/backends:
-                    # - "<base>.part-Frag123.part"
-                    # - "<base>-Frag123"
                     prefix_a = base + ".part-Frag"
                     prefix_b = base + "-Frag"
 
@@ -1989,18 +2312,18 @@ class App(tk.Tk):
                 except Exception:
                     pass
 
-    
-
-        # Résumé lisible de fin
+        # Résumé final
         folder = os.path.dirname(final_path) if converted else ""
         msg_lines = [
             "✅ Conversion terminée",
             f"🎧 {converted} fichier{'s' if converted > 1 else ''} converti{'s' if converted > 1 else ''}",
         ]
+
         if folder:
             msg_lines.append(f"📁 Dossier : {folder}")
 
         return True, "\n".join(msg_lines)
+
 
     def _download_audio(self, url: str, outtmpl: str, platform: str, dl_mode: str, limit_on: bool, limit_n: int):
 
