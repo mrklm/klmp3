@@ -43,9 +43,9 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 
 📟️ Conversion des imports au choix en MP3, M4A, OPUS, FLAC, OGG, WAV
 
-🔧 Optons de normalisation avancées
+🔧 Options de normalisation avancées
 
-📷️ Récupération du visuel associé au fichier
+📷️ Option de récupération du visuel associé au fichier
 
 🗃️ Choix de telechargement: un fichier ou playlist entière
 
