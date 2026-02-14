@@ -19,7 +19,7 @@ set -euo pipefail
 # - yt-dlp is used as Python module (yt_dlp) + certifi collected by PyInstaller
 
 APP_NAME="KLMP3"
-VERSION="2.4.1"
+VERSION=""
 KEEP="0"
 MAKE_ZIP="0"
 ARCH=""   # "x86_64" | "arm64" | auto
@@ -60,6 +60,18 @@ TOOLS_DIR="tools/macos-${ARCH}"
 ICON_PATH="assets/${APP_NAME}.icns"
 PY_FILE="klmp3.py"
 
+# --- Version (default from code if not provided via -v/--version) ---
+# NOTE: PY_FILE must be defined before this block (set -u is enabled).
+if [[ -z "${VERSION}" ]]; then
+  VERSION="$(grep -E '^APP_VERSION[[:space:]]*=[[:space:]]*"' "${PY_FILE}" | sed -E 's/^[^"]*"([^"]+)".*$/\1/')"
+  if [[ -z "${VERSION}" ]]; then
+    echo "❌ Unable to extract APP_VERSION from ${PY_FILE}"
+    exit 1
+  fi
+  echo "ℹ️ Version extracted from code: ${VERSION}"
+fi
+
+
 # --- Checks ---
 [[ -d ".venv" ]] || { echo "❌ Missing .venv/ (create venv first)"; exit 1; }
 [[ -f "$PY_FILE" ]] || { echo "❌ Missing ${PY_FILE} (run this script at repo root)"; exit 1; }
@@ -89,9 +101,18 @@ python -m pip install -U pyinstaller yt-dlp certifi >/dev/null
 python -c "import yt_dlp; print('yt_dlp OK', yt_dlp.version.__version__)" >/dev/null
 python -c "import certifi; print('certifi OK', certifi.where())" >/dev/null
 
-# --- Clean ---
-rm -rf build dist "${APP_NAME}.spec"
-rm -rf "$HOME/Library/Application Support/pyinstaller" || true
+# --- Clean (start) ---
+VENV_BUILD_DIR=".venv-build"
+
+if [[ "$KEEP" != "1" ]]; then
+  echo "== Clean (start) =="
+  rm -rf build dist "${APP_NAME}.spec"
+  rm -rf "$VENV_BUILD_DIR" 2>/dev/null || true
+  rm -rf "$HOME/Library/Application Support/pyinstaller" 2>/dev/null || true
+else
+  echo "ℹ️ Keep enabled: skip clean at start"
+fi
+
 
 # --- Build .app ---
 pyinstaller \
@@ -177,7 +198,20 @@ if [[ "$MAKE_ZIP" == "1" ]]; then
 fi
 
 if [[ "$KEEP" != "1" ]]; then
-  rm -rf "$STAGING_DIR"
+  echo
+  echo "== Clean (end) =="
+  echo " - Removing staging/, build/, dist/, *.spec, .venv-build/, __pycache__/ and PyInstaller cache"
+
+  rm -rf "$STAGING_DIR" 2>/dev/null || true
+  rm -rf build dist "${APP_NAME}.spec" 2>/dev/null || true
+  rm -rf "$VENV_BUILD_DIR" 2>/dev/null || true
+
+  # Python caches in repo
+  find "$ROOT_DIR" -type d -name "__pycache__" -prune -exec rm -rf {} + 2>/dev/null || true
+  find "$ROOT_DIR" -type f \( -name "*.pyc" -o -name "*.pyo" \) -delete 2>/dev/null || true
+
+  # PyInstaller cache (user profile)
+  rm -rf "$HOME/Library/Application Support/pyinstaller" 2>/dev/null || true
 else
-  echo "ℹ️ Kept staging dir: ${STAGING_DIR}"
+  echo "ℹ️ Keep enabled: build artifacts preserved (staging/build/dist/spec/caches)"
 fi
