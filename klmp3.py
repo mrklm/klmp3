@@ -87,7 +87,7 @@ NORM_MODE_PRECISE = "Précis (LUFS / TP / LRA)"
 # Bibli de thèmes (issus de Garage)
 
 # --- Version de l'application (utilisée pour le titre + vérification MAJ) ---
-APP_VERSION = "2.10.2"
+APP_VERSION = "2.10.3"
 __version__ = APP_VERSION
 
 # --- Dépôt GitHub (release) pour la vérification MAJ ---
@@ -675,9 +675,14 @@ class App(tk.Tk):
         self.ytdlp = find_ytdlp_tools_first()
         self.ytdlp_path = self.ytdlp.path
 
+        # État lié à yt-dlp / proposition de mise à jour
+        self._ytdlp_update_running = False
+        self._last_download_error_msg = ""
+        self._last_download_error_kind = ""
+
         # Mode par défaut
-        # - si un binaire yt-dlp est disponible (tools/…), on préfère 
-        # "binary" pour que le bouton Arrêter puisse tuer le process
+        # - si un binaire yt-dlp est disponible (tools/…), on préfère
+        #   "binary" pour que le bouton Arrêter puisse tuer le process
         # - sinon on utilise le module si disponible
         self.ytdlp_mode = "binary" if getattr(self, "ytdlp_path", None) else ("module" if ytdlp_module_available() else "binary")
 
@@ -710,6 +715,9 @@ class App(tk.Tk):
 
         # UI dépendant format
         self._update_advanced_controls()
+
+        # Vérifie au démarrage que yt-dlp local est sain
+        self._ensure_working_ytdlp_on_startup()
 
         self._check_tools()
         # Vérification MAJ de l'application (non bloquant) — une fois au démarrage
@@ -1324,18 +1332,144 @@ class App(tk.Tk):
                 target = _user_tool_path(name)
 
                 ok = download_latest_ytdlp_to(target, self.log)
-                if ok:
-                    # Recharge le chemin (et source) immédiatement
-                    self.ytdlp = find_ytdlp_tools_first()
-                    self.ytdlp_path = self.ytdlp.path
-                    self.log("✅ Mise à jour terminée. Le nouvel yt-dlp sera utilisé immédiatement.")
-                else:
+                if not ok:
                     self.log("❌ Mise à jour échouée.")
+                    return
+
+                # Recharge immédiatement l'état runtime
+                self._refresh_ytdlp_runtime_state()
+
+                # Forcer explicitement l'usage du binaire nouvellement téléchargé
+                self.ytdlp_path = target
+                self.ytdlp_mode = "binary"
+
+                probe_ok, detail = self._probe_ytdlp_binary(target)
+                if probe_ok:
+                    self.log(f"✅ Mise à jour terminée. yt-dlp prêt : {detail}")
+                else:
+                    self.log(f"❌ yt-dlp téléchargé mais invalide : {detail}")
+
             finally:
                 self._ytdlp_update_running = False
 
         threading.Thread(target=worker, daemon=True).start()
-    
+        
+        
+    def _probe_ytdlp_binary(self, path: str | None) -> tuple[bool, str]:
+        """Teste rapidement un binaire yt-dlp via --version."""
+        if not path:
+            return False, "Chemin yt-dlp vide."
+        if not os.path.isfile(path):
+            return False, f"Fichier introuvable : {path}"
+        if not os.access(path, os.X_OK):
+            return False, f"Fichier non exécutable : {path}"
+
+        try:
+            rc, out = self._run_subprocess_collect([path, "--version"])
+        except Exception as e:
+            return False, str(e)
+
+        if rc != 0:
+            detail = (out or "").strip() or f"Code retour {rc}"
+            return False, detail
+
+        version = (out or "").strip().splitlines()
+        version_txt = version[-1].strip() if version else "version inconnue"
+        return True, version_txt
+
+    def _refresh_ytdlp_runtime_state(self) -> None:
+        """Recharge le chemin yt-dlp et choisit explicitement le mode d'utilisation."""
+        self.ytdlp = find_ytdlp_tools_first()
+        self.ytdlp_path = self.ytdlp.path
+
+        if self.ytdlp_path:
+            self.ytdlp_mode = "binary"
+        elif ytdlp_module_available():
+            self.ytdlp_mode = "module"
+        else:
+            self.ytdlp_mode = "binary"
+
+    def _ensure_working_ytdlp_on_startup(self) -> None:
+        """
+        Au démarrage :
+        1) si un binaire utilisateur existe et fonctionne -> on le garde
+        2) s'il existe mais est cassé -> on le supprime
+        3) si le binaire embarqué existe et fonctionne -> on l'utilise
+        4) sinon on retombe sur le module Python si disponible
+        """
+        self._refresh_ytdlp_runtime_state()
+
+        user_name = "yt-dlp.exe" if sys.platform.startswith("win") else "yt-dlp"
+        user_path = _user_tool_path(user_name)
+
+        # 1) Vérifier le binaire utilisateur s'il est sélectionné
+        if self.ytdlp_path and os.path.normpath(self.ytdlp_path) == os.path.normpath(user_path):
+            ok, detail = self._probe_ytdlp_binary(self.ytdlp_path)
+            if ok:
+                self.log(f"✅ yt-dlp utilisateur OK : {detail}")
+                self.ytdlp_mode = "binary"
+                return
+
+            self.log(f"⚠️ yt-dlp utilisateur invalide : {detail}")
+            try:
+                os.remove(self.ytdlp_path)
+                self.log("🧹 Copie utilisateur yt-dlp supprimée (binaire invalide).")
+            except Exception as e:
+                self.log(f"⚠️ Impossible de supprimer le binaire utilisateur invalide : {e}")
+
+            self._refresh_ytdlp_runtime_state()
+
+        # 2) Vérifier le binaire courant si présent
+        if self.ytdlp_path:
+            ok, detail = self._probe_ytdlp_binary(self.ytdlp_path)
+            if ok:
+                self.log(f"✅ yt-dlp binaire OK : {detail}")
+                self.ytdlp_mode = "binary"
+                return
+            self.log(f"⚠️ yt-dlp binaire détecté mais invalide : {detail}")
+
+        # 3) Fallback module
+        if ytdlp_module_available():
+            self.ytdlp_mode = "module"
+            self.log("🐍 Repli sur yt-dlp module Python.")
+        else:
+            self.ytdlp_mode = "binary"
+
+    def _error_looks_like_ytdlp_issue(self, msg: str) -> bool:
+        """Retourne True si le message ressemble à un yt-dlp cassé/obsolète."""
+        m = (msg or "").lower()
+
+        suspicious = (
+            "yt-dlp (module) a échoué",
+            "yt-dlp a échoué",
+            "requested format is not available",
+            "signature extraction failed",
+            "unable to extract",
+            "extractorerror",
+            "unsupported url",
+            "http error 403",
+            "unable to download api page",
+            "could not load pyinstaller's embedded pkg archive",
+            "ffmpeg is not installed",
+            "no such file or directory",
+        )
+        return any(s in m for s in suspicious)
+
+    def _offer_ytdlp_update_after_failure(self, msg: str) -> None:
+        """Propose une mise à jour yt-dlp si l'erreur y ressemble vraiment."""
+        if not self._error_looks_like_ytdlp_issue(msg):
+            return
+        if getattr(self, "_ytdlp_update_running", False):
+            return
+
+        ask = messagebox.askyesno(
+            "Mise à jour yt-dlp",
+            "Le téléchargement a échoué.\n\n"
+            "Il est possible que yt-dlp soit obsolète ou endommagé.\n\n"
+            "Voulez-vous télécharger la dernière version de yt-dlp maintenant ?"
+        )
+        if ask:
+            self.update_ytdlp_for_user()    
 
     # -------------- Theme system --------------
 
@@ -1757,7 +1891,9 @@ class App(tk.Tk):
             if getattr(self, "ytdlp_mode", "binary") == "module":
                 self.log("🐍 yt-dlp : module Python (yt_dlp)")
             else:
-                if getattr(self, "ytdlp", None) and self.ytdlp.source == "TOOLS":
+                if getattr(self, "ytdlp", None) and self.ytdlp.source == "USER":
+                    self.log("👤 yt-dlp utilisateur : utilisé depuis Application Support / AppData / .local/share")
+                elif getattr(self, "ytdlp", None) and self.ytdlp.source == "TOOLS":
                     self.log("📦 yt-dlp embarqué : utilisé depuis tools/")
                 else:
                     self.log("🧭 yt-dlp : trouvé dans le PATH")
@@ -1895,17 +2031,30 @@ class App(tk.Tk):
         self.progress.stop()
         self.btn_start.configure(state="normal")
         self.btn_stop.configure(state="disabled")
+
         if ok:
+            self._last_download_error_msg = ""
+            self._last_download_error_kind = ""
             self.log("✅ Terminé : " + msg)
             messagebox.showinfo("Terminé", msg)
-        else:
-            # Si l'utilisateur a demandé l'arrêt, on ne traite pas ça comme une "erreur"
-            if msg.strip().startswith("⏹️") or "Arrêté par l’utilisateur" in msg or "Annulé" in msg:
-                self.log("⏹️ " + msg)
-                messagebox.showinfo("Arrêt", msg)
-            else:
-                self.log("❌ Erreur : " + msg)
-                messagebox.showerror("Erreur", msg)
+            return
+
+        # Si l'utilisateur a demandé l'arrêt, on ne traite pas ça comme une "erreur"
+        if msg.strip().startswith("⏹️") or "Arrêté par l’utilisateur" in msg or "Annulé" in msg:
+            self._last_download_error_msg = ""
+            self._last_download_error_kind = ""
+            self.log("⏹️ " + msg)
+            messagebox.showinfo("Arrêt", msg)
+            return
+
+        self._last_download_error_msg = msg
+        self._last_download_error_kind = "ytdlp" if self._error_looks_like_ytdlp_issue(msg) else ""
+
+        self.log("❌ Erreur : " + msg)
+        messagebox.showerror("Erreur", msg)
+
+        # Après affichage de l'erreur, proposer une mise à jour si cela y ressemble vraiment
+        self._offer_ytdlp_update_after_failure(msg)
 
     def _worker_queue(self, urls: list[str], outdir: str, dl_mode: str, limit_on: bool, limit_n: int):
         try:
@@ -2362,9 +2511,16 @@ class App(tk.Tk):
             self.ytdlp_mode = "binary"
 
         # lazy resolve yt-dlp path when switching to binary at runtime
-        if self.ytdlp_mode == "binary" and not getattr(self, "ytdlp_path", None):
+        if self.ytdlp_mode == "binary":
             self.ytdlp = find_ytdlp_tools_first()
             self.ytdlp_path = self.ytdlp.path
+
+            # Si un binaire est trouvé mais invalide, on retombe sur le module si possible
+            if self.ytdlp_path:
+                ok_probe, _detail_probe = self._probe_ytdlp_binary(self.ytdlp_path)
+                if not ok_probe and ytdlp_module_available():
+                    self.log("⚠️ yt-dlp binaire invalide au moment du téléchargement : repli sur le module Python.")
+                    self.ytdlp_mode = "module"
 
         # yt-dlp : Option 1 (distribution) => utiliser l'API Python du module yt_dlp.
         # IMPORTANT : dans une app PyInstaller "windowed", appeler `sys.executable -m yt_dlp`

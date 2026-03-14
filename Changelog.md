@@ -8,6 +8,21 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.10.3] – 2026-03-14
+
+Modifié
+
+- Correction d’un problème où KLMP3 pouvait continuer à utiliser le module Python `yt_dlp`
+  après une mise à jour du binaire.
+
+Ajouté
+
+- La mise à jour de `yt-dlp` force maintenant l’utilisation immédiate du nouveau binaire.
+- Vérification du binaire après téléchargement.
+- Journalisation plus claire de la source utilisée (binaire / module).
+
+---
+
 [2.10.2] – 2026-02-13
 
 Modifié
