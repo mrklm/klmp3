@@ -95,7 +95,7 @@ source ".venv/bin/activate"
 
 python -V
 python -m pip install -U pip wheel setuptools >/dev/null
-python -m pip install -U pyinstaller yt-dlp certifi >/dev/null
+python -m pip install -r requirements.txt -r build-requirements.txt
 
 # Quick imports (fail fast)
 python -c "import yt_dlp; print('yt_dlp OK', yt_dlp.version.__version__)" >/dev/null

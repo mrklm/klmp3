@@ -64,16 +64,20 @@ if (-not $Keep) {
 # ---------- Create build venv ----------
 Write-Host "Creating build venv: $VenvDir"
 python -m venv $VenvDir
+if ($LASTEXITCODE -ne 0) { Die "Failed to create build venv." }
 if (-not (Test-Path $VenvPython)) { Die "Failed to create venv at $VenvDir" }
 
 # ---------- Install build tools ----------
 Write-Host "Preparing build venv..."
 & $VenvPython -m pip install --upgrade pip setuptools wheel | Out-Host
-& $VenvPython -m pip install --upgrade pyinstaller | Out-Host
+if ($LASTEXITCODE -ne 0) { Die "Failed to install build dependencies." }
+& $VenvPython -m pip install -r (Join-Path $PSScriptRoot "build-requirements.txt") | Out-Host
+if ($LASTEXITCODE -ne 0) { Die "Failed to install PyInstaller." }
 
 if (Test-Path $ReqFile) {
   Write-Host "Installing requirements.txt..."
   & $VenvPython -m pip install -r $ReqFile | Out-Host
+  if ($LASTEXITCODE -ne 0) { Die "Failed to install application dependencies." }
 }
 
 # ---------- Prepare releases ----------
@@ -84,6 +88,7 @@ $pyiArgs = @()
 $pyiArgs += "--noconfirm"
 $pyiArgs += "--clean"
 $pyiArgs += "--windowed"
+$pyiArgs += @("--collect-all", "yt_dlp", "--collect-submodules", "yt_dlp", "--collect-all", "certifi")
 $pyiArgs += "--name"
 $pyiArgs += $AppName
 $pyiArgs += "--icon"
@@ -101,7 +106,7 @@ if ($LASTEXITCODE -ne 0) { Die "PyInstaller failed." }
 $OutDir = Join-Path $DistDir $AppName
 if (-not (Test-Path $OutDir)) { Die "Output folder missing: $OutDir" }
 
-$ZipName = "$AppName-windows-$Arch-v$Version.zip"
+$ZipName = "$AppName-v$Version-$Arch.zip"
 $ZipPath = Join-Path $ReleasesDir $ZipName
 if (Test-Path $ZipPath) { Remove-Item -Force $ZipPath }
 

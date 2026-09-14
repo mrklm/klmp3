@@ -19,6 +19,8 @@ import urllib.parse
 import urllib.request
 import sys
 import shutil
+import tempfile
+from audiomeans import is_audiomeans, resolve as resolve_audiomeans
 import threading
 import subprocess
 import random
@@ -87,7 +89,7 @@ NORM_MODE_PRECISE = "Précis (LUFS / TP / LRA)"
 # Bibli de thèmes (issus de Garage)
 
 # --- Version de l'application (utilisée pour le titre + vérification MAJ) ---
-APP_VERSION = "2.10.3"
+APP_VERSION = "2.10.4"
 __version__ = APP_VERSION
 
 # --- Dépôt GitHub (release) pour la vérification MAJ ---
@@ -1634,6 +1636,9 @@ class App(tk.Tk):
         except Exception:
             return "ambiguous"
 
+        if is_audiomeans(url):
+            return "single"
+
         has_v = bool(q.get("v", [""])[0])
         has_list = bool(q.get("list", [""])[0])
 
@@ -1934,7 +1939,7 @@ class App(tk.Tk):
         urls = [u] if u else []
 
         if not urls:
-            messagebox.showwarning("URL manquante", "Veuillez saisir une URL YouTube ou Twitch.")
+            messagebox.showwarning("URL manquante", "Veuillez saisir une URL YouTube, Twitch, Audiomeans ou une page contenant un lecteur.")
             return
 
 
@@ -1945,14 +1950,13 @@ class App(tk.Tk):
                 messagebox.showerror("Erreur dossier", f"Impossible de créer le dossier :\n{outdir}\n\n{e}")
                 return
 
-        weird = [u for u in urls if not (is_twitch(u) or is_youtube(u))]
-        if weird:
-            if not messagebox.askyesno(
-                "URL(s) non reconnue(s)",
-                "Au moins une URL ne ressemble pas à YouTube ou Twitch.\n"
-                "Voulez-vous tenter quand même ?"
-            ):
-                return
+        try:
+            valid_urls = all(urllib.parse.urlsplit(u).scheme in ("http", "https") and urllib.parse.urlsplit(u).hostname for u in urls)
+        except ValueError:
+            valid_urls = False
+        if not valid_urls:
+            messagebox.showwarning("URL invalide", "Veuillez saisir une adresse HTTP ou HTTPS complète.")
+            return
 
         self.btn_start.configure(state="disabled")
         self.btn_stop.configure(state="normal")
@@ -2073,8 +2077,8 @@ class App(tk.Tk):
                     self.log("🎯 Plateforme détectée : Twitch (VOD) — téléchargement Audio_Only")
                     ok, final_msg = self._pipeline_download_and_convert(url, outdir, fmt, platform="twitch", dl_mode=dl_mode, limit_on=limit_on, limit_n=limit_n)
                 else:
-                    self.log("🎯 Plateforme détectée : YouTube (ou autre) — téléchargement bestaudio")
-                    ok, final_msg = self._pipeline_download_and_convert(url, outdir, fmt, platform="youtube", dl_mode=dl_mode, limit_on=limit_on, limit_n=limit_n)
+                    self.log("🎯 Recherche de la source audio…")
+                    ok, final_msg = self._pipeline_download_and_convert(url, outdir, fmt, platform="youtube" if is_youtube(url) else "generic", dl_mode=dl_mode, limit_on=limit_on, limit_n=limit_n)
 
                 if not ok:
                     self.after(0, self._finish, False, final_msg)
@@ -2308,6 +2312,15 @@ class App(tk.Tk):
         puis convertit avec ffmpeg.
         """
 
+        audio_info = None
+        if platform not in ("youtube", "twitch"):
+            audio_info = resolve_audiomeans(url, self.log)
+            if audio_info:
+                platform = "audiomeans"
+                dl_mode = DL_MODE_SINGLE
+        if self.stop_flag.is_set():
+            return False, "⏹️ Annulé par l’utilisateur"
+
         url_outdir = outdir
 
         if platform == "youtube" and dl_mode == DL_MODE_PLAYLIST:
@@ -2332,14 +2345,30 @@ class App(tk.Tk):
         else:
             outtmpl = os.path.join(url_outdir, "%(title).200s.%(ext)s")
 
-        ok, downloaded = self._download_audio(
-            url,
-            outtmpl,
-            platform=platform,
-            dl_mode=dl_mode,
-            limit_on=limit_on,
-            limit_n=limit_n,
-        )
+        if audio_info:
+            # Isolate source files from existing outputs, including other recent
+            # downloads. Keep the original title through yt-dlp's sanitization.
+            with tempfile.TemporaryDirectory(prefix="klmp3-audiomeans-") as staging:
+                ok, downloaded = self._download_audio(
+                    url, os.path.join(staging, "%(title).180s.%(ext)s"),
+                    platform, dl_mode, limit_on, limit_n, audio_info=audio_info,
+                )
+                if ok:
+                    name = os.path.splitext(os.path.basename(downloaded))[0]
+                    candidate = name
+                    index = 2
+                    while any(os.path.exists(os.path.join(outdir, candidate + ext))
+                              for ext in ("." + fmt, ".klmp3-source")):
+                        candidate = f"{name} ({index:02d})"
+                        index += 1
+                    source = os.path.join(outdir, candidate + ".klmp3-source")
+                    shutil.move(downloaded, source)
+                    downloaded = source
+        else:
+            ok, downloaded = self._download_audio(
+                url, outtmpl, platform=platform, dl_mode=dl_mode,
+                limit_on=limit_on, limit_n=limit_n,
+            )
 
         if not ok:
             return False, downloaded
@@ -2381,6 +2410,8 @@ class App(tk.Tk):
                     self._cleanup_partials_for(downloaded_path, platform)
                     return False, "⏹️ Annulé par l’utilisateur\n🧹 Fichiers temporaires nettoyés"
 
+                if platform == "audiomeans":
+                    self._cleanup_partials_for(downloaded_path, platform)
                 return False, msg_or_final
 
             final_path = msg_or_final
@@ -2395,15 +2426,15 @@ class App(tk.Tk):
 
                         # --- Pochette YouTube (best effort) ---
             try:
-                if platform == "youtube" and bool(self.fetch_cover_var.get()):
+                if platform in ("youtube", "audiomeans") and bool(self.fetch_cover_var.get()):
 
                     if self.stop_flag.is_set():
                         self.log("⏹️ Annulation demandée — arrêt avant récupération miniature…")
                         self._cleanup_partials_for(downloaded_path, platform)
                         return False, "⏹️ Annulé par l’utilisateur\n🧹 Fichiers temporaires nettoyés"
 
-                    self.log("🖼️ Pochette : récupération miniature YouTube…")
-                    thumb_url = self._yt_thumbnail_url_best_effort(url)
+                    self.log("🖼️ Pochette : récupération du visuel…")
+                    thumb_url = audio_info.get("thumbnail") if audio_info else self._yt_thumbnail_url_best_effort(url)
 
                     if thumb_url:
                         self.log("🖼️ Pochette : miniature OK")
@@ -2450,7 +2481,7 @@ class App(tk.Tk):
                     self._safe_remove(os.path.join(folder, stem + ".part"))
 
                     # Variantes d’extensions possibles (selon ce que yt-dlp sort)
-                    for ext in (".webm", ".m4a", ".mp4", ".opus", ".ogg", ".mkv"):
+                    for ext in (() if platform == "audiomeans" else (".webm", ".m4a", ".mp4", ".opus", ".ogg", ".mkv")):
                         candidate = os.path.join(folder, stem + ext)
                         # sécurité : ne jamais supprimer le fichier final
                         if os.path.abspath(candidate) != os.path.abspath(final_path):
@@ -2488,7 +2519,7 @@ class App(tk.Tk):
         return True, "\n".join(msg_lines)
 
 
-    def _download_audio(self, url: str, outtmpl: str, platform: str, dl_mode: str, limit_on: bool, limit_n: int):
+    def _download_audio(self, url: str, outtmpl: str, platform: str, dl_mode: str, limit_on: bool, limit_n: int, audio_info=None):
 
         """
         Retourne (ok, path_ou_message).
@@ -2653,7 +2684,11 @@ class App(tk.Tk):
 
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    rc = ydl.download([url])
+                    if audio_info:
+                        ydl.process_ie_result(dict(audio_info), download=True)
+                        rc = 0
+                    else:
+                        rc = ydl.download([url])
                 if rc != 0:
                     return False, f"yt-dlp (module) a échoué (code {rc})."
             except DownloadCancelled:
@@ -2673,7 +2708,7 @@ class App(tk.Tk):
             cmd = [self.ytdlp_path, "--ignore-config"] if getattr(self, "ytdlp_path", None) else [sys.executable, "-m", "yt_dlp", "--ignore-config"]
 
             cmd += [
-                url,
+                *([] if audio_info else [url]),
                 '-f', fmt_sel,
                 '-o', outtmpl,
                 '--newline',
@@ -2723,7 +2758,7 @@ class App(tk.Tk):
             if getattr(self, "deno_path", None):
                 cmd += ["--js-runtimes", f"deno:{self.deno_path}", "--remote-components", "ejs:github"]
 
-            self.log("▶️ yt-dlp (binaire) : " + " ".join(cmd))
+            self.log("▶️ yt-dlp (binaire) : téléchargement Audiomeans…" if audio_info else "▶️ yt-dlp (binaire) : " + " ".join(cmd))
 
             dest_re = re.compile(r"Destination:\s(.+)$")
 
@@ -2734,11 +2769,20 @@ class App(tk.Tk):
                 if m:
                     downloaded_path = m.group(1).strip()
 
-            rc = run_subprocess(
-                cmd, on_line, self.stop_flag,
-                set_proc=self._set_active_proc,
-                clear_proc=self._clear_active_proc
-            )   
+            # The CLI accepts the same info dict as the Python API. This
+            # private temporary file is removed even on cancellation/failure;
+            # it contains the server-provided URL, never a persisted cache.
+            with tempfile.TemporaryDirectory(prefix="klmp3-info-") as info_dir:
+                if audio_info:
+                    info_path = os.path.join(info_dir, "episode.json")
+                    with open(info_path, "w", encoding="utf-8") as info_file:
+                        json.dump(audio_info, info_file)
+                    cmd += ["--load-info-json", info_path]
+                rc = run_subprocess(
+                    cmd, on_line, self.stop_flag,
+                    set_proc=self._set_active_proc,
+                    clear_proc=self._clear_active_proc
+                )
 
             if rc == 130:
                 self._cleanup_partials_for(downloaded_path, platform)

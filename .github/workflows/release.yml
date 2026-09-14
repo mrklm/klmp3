@@ -1,0 +1,125 @@
+name: Build and release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate release version and changelog
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python scripts/release_notes.py "$RELEASE_TAG"
+      - name: Install test dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+
+  build:
+    needs: validate
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            target: linux-x86_64
+          - runner: windows-2022
+            target: windows-x86_64
+          - runner: macos-15-intel
+            target: macos-x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download and verify bundled tools
+        run: python scripts/prepare_release_tools.py ${{ matrix.target }}
+      - name: Prepare Python environment
+        shell: bash
+        run: |
+          python -m venv .venv
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            .venv/Scripts/python -m pip install -r requirements.txt -r build-requirements.txt
+          else
+            .venv/bin/python -m pip install -r requirements.txt -r build-requirements.txt
+          fi
+      - name: Test imports and application tests
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            .venv/Scripts/python -m unittest discover -s tests -v
+          else
+            .venv/bin/python -m unittest discover -s tests -v
+          fi
+      - name: Build Linux packages
+        if: runner.os == 'Linux'
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          ARCH: x86_64
+        run: bash build-linux.sh
+      - name: Build Windows package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./build-windows.ps1
+      - name: Build macOS packages
+        if: runner.os == 'macOS'
+        run: bash build-macos.sh --arch x86_64 --zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: releases/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: releases
+          merge-multiple: true
+      - name: Publish complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/release_notes.py "$RELEASE_TAG"
+          # Stage assets in a draft; publish only once every upload succeeds.
+          if gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' > release-state.txt; then
+            if [[ "$(cat release-state.txt)" != "true" ]]; then
+              echo "Release already published; refusing to replace its assets."
+              exit 1
+            fi
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "KLMP3 $RELEASE_TAG" --notes-file release-notes.md
+          fi
+          gh release upload "$RELEASE_TAG" releases/* --clobber
+          gh release edit "$RELEASE_TAG" --notes-file release-notes.md --draft=false --latest

@@ -8,6 +8,19 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.10.4] – 2026-09-14
+
+Ajouté
+
+- Téléchargement des audios Audiomeans depuis un lecteur ou une page qui l’intègre,
+  lorsque l’utilisateur y a accès, avec prise en charge de la session Firefox
+  pour certaines pages nécessitant une connexion.
+- Intégration aux fonctions existantes de conversion, normalisation et récupération de pochette.
+- Builds Linux, Windows et macOS Intel via GitHub Actions ; publication automatique
+  des paquets et de leurs sommes SHA-256 lors du push d’un tag de version.
+
+---
+
 [2.10.3] – 2026-03-14
 
 Modifié
