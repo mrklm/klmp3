@@ -10,6 +10,17 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 
 ---
 
+## 👁️ Aperçu
+
+![Fenêtre options](screenshots/KLmp3.png)
+![Fenêtre general](screenshots/general.png)
+![Fenêtre métadonnées](screenshots/meta.png)
+![Fenêtre conversions](screenshots/convert.png)
+![Fenêtre options](screenshots/options.png)
+![Fenêtre aide](screenshots/aide.png)
+
+---
+
 ## 🎙️ Podcasts web : épisodes et séries
 
 Collez l’URL dans le champ habituel, choisissez le dossier et le format de sortie,
@@ -69,17 +80,6 @@ release. Les futures variantes High Sierra et Catalina restent à construire et
 
 La mise à jour de **yt-dlp** utilise un bouton distinct : le filtrage de compatibilité
 décrit ici concerne les paquets **KLMP3**.
-
----
-
-## 👁️ Aperçu
-
-![Fenêtre options](screenshots/KLmp3.png)
-![Fenêtre general](screenshots/general.png)
-![Fenêtre métadonnées](screenshots/meta.png)
-![Fenêtre conversions](screenshots/convert.png)
-![Fenêtre options](screenshots/options.png)
-![Fenêtre aide](screenshots/aide.png)
 
 ---
 
