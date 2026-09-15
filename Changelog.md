@@ -8,6 +8,20 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.10.6] – 2026-09-15
+
+Ajouté
+
+- Séries Radio France : téléchargement du premier épisode ou de la playlist
+  dans l’ordre, avec limite éventuelle. Les séries paginées sont signalées comme non prises en charge.
+
+Modifié
+
+- Podcasts web : sous-dossier de série et numérotation uniquement pour plusieurs
+  fichiers ; un fichier unique reste directement dans le dossier de sortie.
+
+---
+
 [2.10.5] – 2026-09-15
 
 Ajouté

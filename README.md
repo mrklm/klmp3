@@ -1,4 +1,4 @@
-![Version](https://img.shields.io/badge/version-2.10.5-blue)
+![Version](https://img.shields.io/badge/version-2.10.6-blue)
 ![License](https://img.shields.io/badge/license-GPL--3.0-green)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
@@ -25,7 +25,7 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 
 ## 💾 Applications standalone (recommandé)
 
-La version des sources est **2.10.5**. Les liens ci-dessous restent ceux de la
+La version des sources est **2.10.6**. Les liens ci-dessous restent ceux de la
 version **2.10.4**, en attendant une prochaine publication des paquets.
 
 - 🐧 **Linux**
@@ -242,8 +242,8 @@ Pour publier, mettre à jour `APP_VERSION`, le README et le changelog, puis comm
 et pousser les modifications avant de créer le tag correspondant :
 
 ```bash
-git tag v2.10.5
-git push origin v2.10.5
+git tag v2.10.6
+git push origin v2.10.6
 ```
 
 Le tag doit correspondre exactement à `APP_VERSION` et à une entrée du changelog.
@@ -263,8 +263,8 @@ validés lors de la première exécution du workflow.
 Collez l’URL d’un épisode ou d’une série dans le champ habituel :
 
 - Épisode Blast ou Radio France : téléchargement de cet épisode.
-- Série Blast, mode **Un fichier** : premier épisode dans l’ordre de la page.
-- Série Blast, mode **La playlist complète** : épisodes numérotés dans un
+- Série Blast ou série Radio France reconnue, mode **Un fichier** : premier épisode dans l’ordre de la page.
+- Série Blast ou série Radio France reconnue, mode **La playlist complète** : épisodes numérotés dans un
   sous-dossier, avec la limite de nombre choisie (maximum 1 000).
 - URL de flux RSS : même choix fichier/playlist, dans l’ordre du flux.
 
@@ -275,7 +275,17 @@ page sont utilisés. Les paramètres et URL audio fournis sont conservés.
 Les métadonnées disponibles sont insérées lorsque le format source le permet,
 puis le parcours habituel assure conversion, normalisation et pochette optionnelle.
 
-Ce premier périmètre ne parcourt pas les pages d’épisodes d’une série Radio France,
-ne gère pas la pagination des collections et n’exécute pas le JavaScript des sites.
+Pour les séries décrites par les données structurées `PodcastSeries` et `ItemList`
+(notamment les séries Radio France), le moteur suit uniquement la liste déclarée
+d’épisodes, dans l’ordre indiqué. Les pages d’épisodes sont consultées au moment
+du téléchargement, après application du mode et de la limite. Un épisode
+inaccessible arrête la playlist avec un message explicite.
+La pagination des collections n’est pas encore gérée : les séries Radio France
+annonçant plusieurs pages sont signalées plutôt que téléchargées partiellement.
+Le moteur n’exécute pas le JavaScript des sites.
 La compatibilité avec un autre site dépend des données qu’il expose. Aucun nouveau
 mécanisme de connexion n’est ajouté ; le support Audiomeans existant est conservé.
+
+Pour les Podcasts web, le sous-dossier de série et la numérotation sont utilisés
+uniquement si plusieurs épisodes sont sélectionnés après application de la limite.
+Un fichier unique reste directement dans le dossier de sortie, sans numéro ajouté.

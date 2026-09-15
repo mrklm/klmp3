@@ -90,7 +90,7 @@ NORM_MODE_PRECISE = "Précis (LUFS / TP / LRA)"
 # Bibli de thèmes (issus de Garage)
 
 # --- Version de l'application (utilisée pour le titre + vérification MAJ) ---
-APP_VERSION = "2.10.5"
+APP_VERSION = "2.10.6"
 __version__ = APP_VERSION
 
 # --- Dépôt GitHub (release) pour la vérification MAJ ---
@@ -2334,8 +2334,9 @@ class App(tk.Tk):
                 entries = entries[:max(1, min(int(limit_n), 1000))]
             else:
                 entries = entries[:1000]
+            multiple_files = len(entries) > 1
             from yt_dlp.utils import sanitize_filename
-            if dl_mode == DL_MODE_PLAYLIST:
+            if multiple_files:
                 folder = sanitize_filename(audio_info["title"], restricted=False)[:150].strip(" .") or "Podcast"
                 outdir = os.path.join(outdir, folder)
                 os.makedirs(outdir, exist_ok=True)
@@ -2343,7 +2344,14 @@ class App(tk.Tk):
                 if self.stop_flag.is_set():
                     return False, "⏹️ Annulé par l’utilisateur"
                 item = dict(entry)
-                if dl_mode == DL_MODE_PLAYLIST:
+                if item.get("episode_url"):
+                    self.log(f"🎙️ Résolution de l’épisode {index}/{len(entries)}…")
+                    item = resolve_web_podcast(item["episode_url"], self.log)
+                    if not item or "entries" in item:
+                        return False, f"Podcasts web : audio introuvable pour l’épisode {index}."
+                    item = dict(item)
+                    item.setdefault("album", audio_info["title"])
+                if multiple_files:
                     item["title"] = f"{index:0{max(2, len(str(len(entries))))}d} - {item['title']}"
                 ok, message = self._pipeline_download_and_convert(
                     url, outdir, fmt, "web_podcast", DL_MODE_SINGLE, False, 0, audio_info=item)

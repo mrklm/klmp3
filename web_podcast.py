@@ -163,6 +163,57 @@ def rss_info(source, url):
     return {'title': title, 'entries': entries}
 
 
+def series_info(page, url):
+    """Recognize an explicit PodcastSeries and a single ordered episode ItemList.
+
+    Return page references, not audio URLs: resolve only the selected episodes,
+    immediately before downloading. Breadcrumbs and arbitrary anchors are ignored.
+    """
+    series_title = None
+    lists = []
+    for attrs, text in page.scripts:
+        if attrs.get('type') != 'application/ld+json':
+            continue
+        try:
+            data = json.loads(text)
+        except ValueError:
+            continue
+        for node in walk(data):
+            entity = node.get('mainEntity')
+            if isinstance(entity, dict) and entity.get('@type') == 'PodcastSeries':
+                declared = http_url(node.get('url') or node.get('@id'), url)
+                if declared and urllib.parse.urlsplit(declared).path.rstrip('/') == urllib.parse.urlsplit(url).path.rstrip('/'):
+                    series_title = entity.get('name') or node.get('name') or page.title
+            if node.get('@type') == 'ItemList' and isinstance(node.get('itemListElement'), list):
+                lists.append(node['itemListElement'])
+    if not series_title or not lists:
+        return None
+    if len(lists) != 1:
+        raise PodcastError('Podcasts web : plusieurs listes présentes, impossible de déterminer les épisodes de la série.')
+    ordered = []
+    for index, item in enumerate(lists[0]):
+        if not isinstance(item, dict):
+            continue
+        nested = item.get('item')
+        candidate = item.get('url') or (nested.get('url') if isinstance(nested, dict) else nested)
+        target = http_url(candidate, url)
+        if not target or urllib.parse.urlsplit(target).hostname != urllib.parse.urlsplit(url).hostname or target == url:
+            raise PodcastError('Podcasts web : lien d’épisode invalide dans la série.')
+        try:
+            position = int(item.get('position', index + 1))
+        except (ValueError, TypeError):
+            raise PodcastError('Podcasts web : ordre des épisodes invalide.')
+        ordered.append((position, target))
+    seen, entries = set(), []
+    for _, target in sorted(ordered, key=lambda pair: pair[0]):
+        if target not in seen:
+            entries.append({'episode_url': target})
+            seen.add(target)
+    if not entries:
+        raise PodcastError('Podcasts web : aucun épisode dans cette série.')
+    return {'title': series_title, 'entries': entries}
+
+
 def resolve(url, log=lambda message: None):
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme not in ('http', 'https'):
@@ -225,6 +276,14 @@ def resolve(url, log=lambda message: None):
         info = audio_info({'contentUrl': src}, url, page.title)
         if info:
             return info
+    series = series_info(page, url)
+    if series:
+        # Radio France exposes this count in its initial state. Do not silently
+        # label the first page as a complete series when pagination is required.
+        last_pages = re.findall(r'pagination:\s*\{lastPage:\s*(\d+)', source)
+        if any(int(count) > 1 for count in last_pages):
+            raise PodcastError('Podcasts web : cette série comporte plusieurs pages ; la pagination n’est pas encore prise en charge.')
+        return series
     # Follow only an unambiguous feed. Multiple feeds require user selection.
     feeds = list(dict.fromkeys(http_url(f, url) for f in page.feeds))
     matching_feeds = [f for f in feeds if f and slug in urllib.parse.urlsplit(f).path.split('/')]

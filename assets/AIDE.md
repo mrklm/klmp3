@@ -528,8 +528,13 @@ et les oreilles curieuses 🎧
 🎙️ Podcasts web
 
 Coller la page d’un épisode Blast ou Radio France pour récupérer son audio.
-Pour une série Blast : le mode fichier unique prend le premier épisode ;
+Pour une série Blast ou une série Radio France reconnue : le mode fichier unique prend le premier épisode ;
 « La playlist complète » télécharge les épisodes numérotés dans un sous-dossier,
 avec la limite éventuelle choisie. Une URL de flux RSS est aussi acceptée.
 La conversion, la normalisation et la pochette optionnelle restent disponibles.
-Les playlists Radio France et les collections paginées ne sont pas encore gérées.
+Les séries Radio France utilisent la liste structurée des épisodes, sans inclure
+les recommandations. Les collections paginées ne sont pas encore gérées.
+
+Pour les Podcasts web, le sous-dossier de série et la numérotation sont utilisés
+uniquement si plusieurs épisodes sont sélectionnés après application de la limite.
+Un fichier unique reste directement dans le dossier de sortie, sans numéro ajouté.
