@@ -35,12 +35,12 @@ d’extraire le son de contenus en ligne.
 🎬 Extraire le son d’un contenu unique
 
 🎯 Objectif  
-👉 Extraire le son d’une seule vidéo ou VOD
+👉 Récupérer une vidéo, une VOD ou un épisode audio
 
 🧭 Procédure  
 1. Onglet Général  
-2. Coller l’URL YouTube ou Twitch  
-3. Cliquer sur ▶️ Démarrer  
+2. Coller l’URL de la vidéo, du lecteur Audiomeans ou de l’épisode de podcast
+3. Choisir le format et le dossier de sortie, puis cliquer sur ▶️ Démarrer
 
 📈 Progression affichée en temps réel  
 🧹 Nettoyage automatique des fichiers temporaires
@@ -62,7 +62,49 @@ Chaque élément est :
 - téléchargé séparément 🔼  
 - converti individuellement ⚙️  
 - annulable à tout moment ⛔  
-- rangé dans un dossier au nom de la playlist 📂
+- rangé dans le dossier prévu pour la playlist 📂
+
+Pour les Podcasts web, le sous-dossier et la numérotation sont utilisés seulement
+si plusieurs épisodes sont sélectionnés. Un fichier unique reste dans le dossier
+de sortie, sans numéro ajouté.
+
+---
+
+🎙️ Podcasts web : épisodes et séries
+
+1. Coller la page d’un épisode ou d’une série, notamment Blast ou Radio France.
+2. Choisir le mode de téléchargement :
+   - fichier unique : l’épisode demandé, ou le premier épisode d’une série ;
+   - « La playlist complète » : les épisodes de la série dans l’ordre.
+3. Pour une playlist, activer une limite si souhaité (maximum 1 000 épisodes).
+4. Choisir le format et le dossier de sortie, puis cliquer sur Démarrer.
+
+📌 Pour récupérer toute une série, sélectionner « La playlist complète ».
+Une URL de flux RSS fonctionne aussi : l’ordre utilisé est celui du flux.
+
+📁 Plusieurs fichiers → sous-dossier au nom de la série et fichiers numérotés.
+📄 Un seul fichier → dossier de sortie directement, sans numéro ajouté.
+Cette règle s’applique après le choix du mode et de la limite.
+
+La conversion, la normalisation et la pochette optionnelle restent disponibles.
+Les métadonnées sont récupérées lorsqu’elles sont fournies et peuvent être insérées.
+
+Les collections paginées et les lecteurs nécessitant JavaScript ne sont pas encore
+gérés. Une série Radio France annonçant plusieurs pages est signalée comme non
+prise en charge. Un épisode sans audio arrête la playlist avec un message explicite.
+Tous les sites de podcasts ne sont pas nécessairement reconnus.
+
+---
+
+🎧 Lecteurs Audiomeans
+
+Coller l’URL du lecteur ou celle d’une page contenant ce lecteur.
+KLMP3 récupère le premier épisode reconnu ; les playlists Audiomeans ne sont pas gérées.
+Pour certaines pages avec accès abonné, la session du profil Firefox par défaut
+peut être utilisée : se connecter au site dans Firefox avant de réessayer.
+Cette possibilité dépend du site pris en charge et ne garantit pas l’accès à tous les sites payants.
+
+Si un lien audio temporaire a expiré, repartir de la page ou de l’URL du lecteur.
 
 ---
 
@@ -135,9 +177,9 @@ Année 📅
 
 🎼 Titres et numéros de piste (important)
 
-KLmp3 ne modifie **jamais** le nom des fichiers.
+Lors de l’édition des tags, le nom du fichier et le titre audio sont deux informations distinctes.
 
-Il travaille uniquement sur les métadonnées internes (tags audio).
+Les téléchargements de séries peuvent recevoir un nom numéroté pour faciliter leur rangement.
 
 🗂️ Nom de fichier ≠ Titre  
 Le nom de fichier sert à l’organisation humaine.  
@@ -171,10 +213,26 @@ pour saisir les valeurs manuellement.
 
 🧠 En résumé (métadonnées)
 
-🗂️ le nom de fichier n’est jamais modifié  
+🗂️ le nom de fichier sert au rangement
 🎵 le Titre sert à l’affichage  
 🔢 le N° de piste sert au classement  
 📚 pour une compatibilité parfaite (Kodi), les deux doivent être renseignés  
+
+---
+
+🔄 Mise à jour de KLMP3
+
+Dans l’onglet Options, KLMP3 recherche une version plus récente compatible avec
+votre système et l’architecture de votre ordinateur. Sur macOS, la version du
+système est également vérifiée.
+
+Le bouton Télécharger est activé uniquement si un paquet compatible est confirmé.
+Une nouvelle version destinée à un autre système ne vous est pas proposée.
+En cas de problème réseau, la vérification est indiquée comme indisponible.
+
+Les variantes High Sierra et Catalina restent à préparer et à vérifier.
+
+Ce contrôle concerne KLMP3. La mise à jour de yt-dlp est une fonction distincte.
 
 ---
 
@@ -191,10 +249,10 @@ Un bouton permet de mettre à jour yt-dlp directement depuis l’onglet Options.
 🧠 En résumé général
 
 🎯 KLmp3 sert à extraire le son  
-🎧 Une URL → un fichier audio  
+🎧 Une URL → un épisode ou une série, selon le mode choisi
 🧹 Nettoyage automatique  
 ⛔ Annulation sans risque  
-🏷️ Métadonnées gérées séparément  
+🏷️ Métadonnées récupérées lorsque disponibles, et modifiables dans leur onglet
 
 ✨ KLmp3 s’occupe de la technique, vous profitez du son ✨
 
@@ -522,19 +580,3 @@ et les oreilles curieuses 🎧
        🦕 Deno → aide yt-dlp à passer les pièges JavaScript
 
       💙  KLmp3  💙
-
-
-
-🎙️ Podcasts web
-
-Coller la page d’un épisode Blast ou Radio France pour récupérer son audio.
-Pour une série Blast ou une série Radio France reconnue : le mode fichier unique prend le premier épisode ;
-« La playlist complète » télécharge les épisodes numérotés dans un sous-dossier,
-avec la limite éventuelle choisie. Une URL de flux RSS est aussi acceptée.
-La conversion, la normalisation et la pochette optionnelle restent disponibles.
-Les séries Radio France utilisent la liste structurée des épisodes, sans inclure
-les recommandations. Les collections paginées ne sont pas encore gérées.
-
-Pour les Podcasts web, le sous-dossier de série et la numérotation sont utilisés
-uniquement si plusieurs épisodes sont sélectionnés après application de la limite.
-Un fichier unique reste directement dans le dossier de sortie, sans numéro ajouté.

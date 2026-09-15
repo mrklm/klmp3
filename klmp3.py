@@ -20,6 +20,7 @@ import urllib.request
 import sys
 import shutil
 import tempfile
+from app_updates import find_update
 from audiomeans import is_audiomeans, resolve as resolve_audiomeans
 from web_podcast import resolve as resolve_web_podcast
 import threading
@@ -90,7 +91,7 @@ NORM_MODE_PRECISE = "Précis (LUFS / TP / LRA)"
 # Bibli de thèmes (issus de Garage)
 
 # --- Version de l'application (utilisée pour le titre + vérification MAJ) ---
-APP_VERSION = "2.10.6"
+APP_VERSION = "2.10.7"
 __version__ = APP_VERSION
 
 # --- Dépôt GitHub (release) pour la vérification MAJ ---
@@ -555,38 +556,6 @@ def _parse_semver_any(v: str) -> tuple[int, int, int]:
 
 def _is_newer_version(remote: str, local: str) -> bool:
     return _parse_semver_any(remote) > _parse_semver_any(local)
-
-def _fetch_latest_github_release(owner: str, repo: str, timeout: int = 8) -> dict | None:
-    """Retourne le JSON de la dernière release GitHub (ou None)."""
-    api_url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
-    try:
-        req = urllib.request.Request(api_url, headers={"User-Agent": f"{repo}-update-check"})
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return json.loads(r.read().decode("utf-8", errors="replace"))
-    except Exception:
-        return None
-
-def _pick_release_asset_for_platform(release_json: dict) -> tuple[str, str] | None:
-    """Choisit un asset adapté à l'OS courant. Retourne (filename, url) ou None."""
-    sysname = platform.system().lower()  # windows, darwin, linux
-    if sysname == "windows":
-        exts = (".exe", ".zip")
-    elif sysname == "darwin":
-        exts = (".dmg", ".zip")
-    else:
-        exts = (".appimage", ".tar.gz", ".zip")
-
-    assets = release_json.get("assets", []) or []
-    for a in assets:
-        name = (a.get("name") or "")
-        url = a.get("browser_download_url")
-        if not url:
-            continue
-        lower = name.lower()
-        for ext in exts:
-            if lower.endswith(ext):
-                return name, url
-    return None
 
 def _downloads_dir() -> str:
     """Dossier Téléchargements (simple, multi-OS)."""
@@ -1204,7 +1173,7 @@ class App(tk.Tk):
     # ---------------- MAJ application ----------------
     def _set_app_update_status(self, status: str, tag: str | None = None, asset: tuple[str, str] | None = None, page_url: str | None = None):
         """Met à jour la ligne + le bouton dans l'onglet Options."""
-        # status: 'checking' | 'none' | 'available' | 'available_no_asset' | 'error'
+        # status: 'checking' | 'none' | 'available' | 'incompatible' | 'error'
         self._app_update_info = {
             "tag": tag,
             "asset": asset,
@@ -1214,13 +1183,16 @@ class App(tk.Tk):
         if not hasattr(self, "lbl_app_update") or not hasattr(self, "btn_app_download"):
             return
 
+        self.lbl_app_update.unbind("<Button-1>")
+        self.lbl_app_update.configure(cursor="")
+
         if status == "checking":
             self.lbl_app_update.configure(text="⏳ Vérification des mises à jour…")
             self.btn_app_download.configure(state="disabled", text="Télécharger")
             return
 
         if status == "none":
-            self.lbl_app_update.configure(text="✅ Pas de nouvelle version de KLmp3 disponible")
+            self.lbl_app_update.configure(text="✅ Aucune nouvelle version compatible avec votre système")
             self.btn_app_download.configure(state="disabled", text="Télécharger")
             return
 
@@ -1232,12 +1204,9 @@ class App(tk.Tk):
             self.btn_app_download.configure(state="normal", text="Télécharger")
             return
 
-        if status == "available_no_asset" and tag:
-            self.lbl_app_update.configure(text=f"🆕 Nouvelle version disponible de KLmp3 ({tag}) — aucun fichier compatible trouvé")
-            self.lbl_app_update.configure(cursor="")
-            self.lbl_app_update.unbind("<Button-1>")
-            # Fallback: bouton ouvre la page de release
-            self.btn_app_download.configure(state="normal", text="Ouvrir")
+        if status == "incompatible":
+            self.lbl_app_update.configure(text="ℹ️ Aucune nouvelle version dont la compatibilité avec votre système est confirmée")
+            self.btn_app_download.configure(state="disabled", text="Télécharger")
             return
 
         # error (silencieux côté utilisateur, on évite de spammer)
@@ -1245,31 +1214,16 @@ class App(tk.Tk):
         self.btn_app_download.configure(state="disabled", text="Télécharger")
 
     def _check_app_update_on_startup(self):
-        """Vérifie la dernière release GitHub sans bloquer l'UI (une fois au démarrage)."""
+        """Recherche une release compatible sans bloquer l'UI (une fois au démarrage)."""
         self._set_app_update_status("checking")
 
         def worker():
-            rel = _fetch_latest_github_release(APP_GITHUB_OWNER, APP_GITHUB_REPO, timeout=8)
-            if not rel:
+            try:
+                status, release, asset = find_update(APP_GITHUB_OWNER, APP_GITHUB_REPO, self.APP_VERSION)
+                tag = release.get("tag_name") if release else None
+                self.after(0, lambda: self._set_app_update_status(status, tag=tag, asset=asset))
+            except Exception:
                 self.after(0, lambda: self._set_app_update_status("error"))
-                return
-
-            tag = (rel.get("tag_name") or "").strip()
-            page_url = rel.get("html_url") or None
-            if not tag:
-                self.after(0, lambda: self._set_app_update_status("error"))
-                return
-
-            if not _is_newer_version(tag, self.APP_VERSION):
-                self.after(0, lambda: self._set_app_update_status("none", tag=tag, page_url=page_url))
-                return
-
-            asset = _pick_release_asset_for_platform(rel)
-            if not asset:
-                self.after(0, lambda: self._set_app_update_status("available_no_asset", tag=tag, asset=None, page_url=page_url))
-                return
-
-            self.after(0, lambda: self._set_app_update_status("available", tag=tag, asset=asset, page_url=page_url))
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1279,14 +1233,7 @@ class App(tk.Tk):
         asset = info.get("asset")
         page_url = info.get("page_url")
 
-        # Si on n'a pas d'asset, le bouton sert de fallback (ouvrir la page).
         if not asset:
-            if page_url:
-                try:
-                    import webbrowser
-                    webbrowser.open(page_url)
-                except Exception:
-                    pass
             return
 
         filename, url = asset

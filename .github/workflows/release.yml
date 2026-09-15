@@ -83,6 +83,8 @@ jobs:
       - name: Build macOS packages
         if: runner.os == 'macOS'
         run: bash build-macos.sh --arch x86_64 --zip
+      - name: Declare package compatibility
+        run: python scripts/update_manifest.py --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.target }}
@@ -112,6 +114,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/release_notes.py "$RELEASE_TAG"
+          python3 scripts/update_manifest.py
           # Stage assets in a draft; publish only once every upload succeeds.
           if gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' > release-state.txt; then
             if [[ "$(cat release-state.txt)" != "true" ]]; then

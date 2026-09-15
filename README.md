@@ -1,12 +1,68 @@
-![Version](https://img.shields.io/badge/version-2.10.6-blue)
+![Version](https://img.shields.io/badge/version-2.10.7-blue)
 ![License](https://img.shields.io/badge/license-GPL--3.0-green)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 
 ## 🔈️ KLmp3 📢
 
-Extracteur audio YouTube / Twitch / Audiomeans simple et multi-OS, écrit en Python + Tkinter.
+Extracteur audio YouTube, Twitch, Audiomeans et Podcasts web pour Linux, Windows et macOS.
 Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV) sans dépendre d’un environnement exotique.
+
+---
+
+## 🎙️ Podcasts web : épisodes et séries
+
+Collez l’URL dans le champ habituel, choisissez le dossier et le format de sortie,
+puis cliquez sur **Démarrer**.
+
+| URL et mode choisis | Résultat |
+| --- | --- |
+| Page d’un épisode Blast ou Radio France | Cet épisode uniquement |
+| Page d’une série reconnue, mode fichier unique | Premier épisode dans l’ordre de la page |
+| Page d’une série reconnue, **La playlist complète** | Épisodes dans l’ordre, avec la limite éventuelle |
+| Flux RSS de podcast | Premier épisode ou playlist, dans l’ordre du flux |
+
+**Pour télécharger plusieurs épisodes d’une série, pensez à sélectionner
+« La playlist complète ».** La limite maximale est de 1 000 épisodes.
+
+Après application du mode et de la limite :
+
+- **Plusieurs fichiers** : sous-dossier au nom de la série, fichiers numérotés.
+- **Un seul fichier** : directement dans le dossier de sortie, sans numéro ajouté.
+
+La conversion et la normalisation restent disponibles. Le titre, l’auteur, la date
+et la série sont renseignés lorsque ces informations sont disponibles et que le
+format source permet leur insertion. L’option de pochette utilise le visuel fourni
+par la source lorsqu’il est disponible.
+
+Le moteur reconnaît les liens audio et les données structurées exposés par les
+pages, ainsi que les flux RSS associés. Il prend notamment en charge les épisodes
+et séries Blast, et les séries Radio France décrites par une liste structurée
+d’épisodes. Il ne suit pas les simples liens de recommandation.
+
+**Limites actuelles :** la pagination des collections et les lecteurs nécessitant
+l’exécution de JavaScript ne sont pas gérés. Les séries Radio France annonçant
+plusieurs pages sont signalées comme non prises en charge. Un épisode sans audio
+arrête la playlist avec un message explicite. La compatibilité avec d’autres sites
+dépend des données qu’ils exposent ; la fonction n’est pas universelle.
+
+## 🔄 Mise à jour de KLMP3
+
+Dans **Options**, KLMP3 recherche une version plus récente compatible avec le
+système et l’architecture de l’ordinateur. Sur macOS, il vérifie aussi la version
+du système requise par le paquet.
+
+Si une nouvelle release existe mais qu’aucun paquet compatible n’est confirmé,
+le bouton de téléchargement reste désactivé. Par exemple, un paquet destiné à
+macOS récent n’est pas proposé à un utilisateur sous Catalina ou High Sierra.
+Une erreur réseau est signalée comme une vérification indisponible.
+
+Cette vérification dépend des informations de compatibilité publiées avec chaque
+release. Les futures variantes High Sierra et Catalina restent à construire et
+à vérifier ; elles ne sont pas encore produites par le workflow actuel.
+
+La mise à jour de **yt-dlp** utilise un bouton distinct : le filtrage de compatibilité
+décrit ici concerne les paquets **KLMP3**.
 
 ---
 
@@ -25,24 +81,24 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 
 ## 💾 Applications standalone (recommandé)
 
-La version des sources est **2.10.6**. Les liens ci-dessous restent ceux de la
-version **2.10.4**, en attendant une prochaine publication des paquets.
+Version **2.10.7** : les paquets ci-dessous seront disponibles après réussite
+des builds et publication de la release.
 
 - 🐧 **Linux**
-  - [KLMP3-2.10.4-linux-x86_64.AppImage](https://github.com/mrklm/klmp3/releases)
-  - [KLMP3-2.10.4-linux-x86_64.tar.gz](https://github.com/mrklm/klmp3/releases)
+  - [KLMP3-2.10.7-linux-x86_64.AppImage](https://github.com/mrklm/klmp3/releases)
+  - [KLMP3-2.10.7-linux-x86_64.tar.gz](https://github.com/mrklm/klmp3/releases)
   
 - 🍎 **macOS**
-  - [KLMP3-2.10.4-macOS-x86_64.dmg](https://github.com/mrklm/klmp3/releases)
+  - [KLMP3-2.10.7-macOS-x86_64.dmg](https://github.com/mrklm/klmp3/releases)
 
 - 🪟 **Windows**  
-  - [KLMP3-v2.10.4-windows-x86_64.zip](https://github.com/mrklm/klmp3/releases)
+  - [KLMP3-v2.10.7-windows-x86_64.zip](https://github.com/mrklm/klmp3/releases)
 
 ---         
 
 ## 🧰 Fonctionnalités
 
-🪠 Extraction audio YouTube, Twitch VOD et lecteurs Audiomeans
+🪠 Extraction audio YouTube, Twitch VOD, lecteurs Audiomeans et Podcasts web (notamment Blast et Radio France)
 
 📟️ Conversion des imports au choix en MP3, M4A, OPUS, FLAC, OGG, WAV
 
@@ -54,9 +110,9 @@ version **2.10.4**, en attendant une prochaine publication des paquets.
 
 ⚠️ Option nombre de fichiers maximum dans une playlist
 
-📁 Dossier de sortie automatique par date --> ~/klmp3/AA/MM/JJ/
+📁 Dossier de sortie personnalisable dans l’onglet Général
 
-🗂️ Sous dossier automatique pour les playlist 
+🗂️ Podcasts web : sous-dossier de série et numérotation si plusieurs épisodes sont sélectionnés
 
 🐚 Onglet de conversion de fichiers 
 
@@ -68,7 +124,7 @@ version **2.10.4**, en attendant une prochaine publication des paquets.
 
 ⚡️ Fonction de mise à jour de YT-DLP (outil de téléchargement)
 
-⚡️ Vérification automatique si mise à jour KLmp3 disponnible  
+⚡️ Recherche automatique d’une mise à jour compatible avec votre ordinateur
 
 🗒️ Journal d’exécution intégré
 
@@ -101,14 +157,10 @@ FFmpeg peut être :
 python3 klmp3.py
 ```
 
-Arborescence minimale:
-
-klmp3/
-
-- klmp3.py
-- ffmpeg_locator.py
-- assets/ logo.png
-- tools / ffmpeg + ffprobe
+Conservez l’ensemble des fichiers du dépôt : les modules de téléchargement,
+de mise à jour et les onglets sont répartis dans plusieurs fichiers Python.
+Le dossier `assets/` contient notamment les visuels et l’aide ; `tools/` peut
+contenir les exécutables embarqués.
 
 --- 
 
@@ -224,9 +276,9 @@ Tests hors réseau (avec les dépendances installées) :
 python -m unittest discover -s tests -v
 ```
 
-Les tests couvrent les lecteurs directs, les intégrations HTML/Embedly simulées,
-les erreurs, le renouvellement des métadonnées, les modes module/binaire de yt-dlp,
-la classification YouTube et une conversion audio réelle si FFmpeg embarqué est présent.
+Les tests couvrent Audiomeans, Podcasts web, les séries et leur rangement, les
+modes module/binaire de yt-dlp et la sélection des mises à jour compatibles.
+Les tests de conversion audio réelle utilisent FFmpeg embarqué lorsqu’il est présent.
 
 ## Publication automatique sur GitHub
 
@@ -242,8 +294,8 @@ Pour publier, mettre à jour `APP_VERSION`, le README et le changelog, puis comm
 et pousser les modifications avant de créer le tag correspondant :
 
 ```bash
-git tag v2.10.6
-git push origin v2.10.6
+git tag v2.10.7
+git push origin v2.10.7
 ```
 
 Le tag doit correspondre exactement à `APP_VERSION` et à une entrée du changelog.
@@ -258,34 +310,32 @@ Les paquets Windows et macOS ne sont pas signés avec un certificat éditeur ; l
 workflow ne réalise pas de notarisation Apple. Les builds distants devront être
 validés lors de la première exécution du workflow.
 
-## Podcasts web
+## Développeurs : manifeste de compatibilité
 
-Collez l’URL d’un épisode ou d’une série dans le champ habituel :
+KLMP3 consulte les releases stables et recherche la plus récente compatible avec
+son système et son architecture. Pour macOS, la version du système doit respecter
+les bornes déclarées pour le paquet. Une release sans manifeste `klmp3-update.json`,
+un paquet absent, ou une compatibilité non confirmée ne déclenche pas de proposition
+de téléchargement. Une erreur réseau est affichée comme une vérification indisponible.
 
-- Épisode Blast ou Radio France : téléchargement de cet épisode.
-- Série Blast ou série Radio France reconnue, mode **Un fichier** : premier épisode dans l’ordre de la page.
-- Série Blast ou série Radio France reconnue, mode **La playlist complète** : épisodes numérotés dans un
-  sous-dossier, avec la limite de nombre choisie (maximum 1 000).
-- URL de flux RSS : même choix fichier/playlist, dans l’ordre du flux.
+Le workflow génère des fichiers `compat-<cible>.json`, puis les fusionne dans
+`klmp3-update.json` avant publication. La version du manifeste doit correspondre au
+tag. Le paquet macOS actuel déclare par prudence la version du système de build
+comme minimum ; cela ne certifie pas sa compatibilité avec les systèmes plus anciens.
+Les bornes s’appliquent au paquet complet, y compris Python, Tcl/Tk et les outils embarqués.
 
-Le moteur lit les données structurées `AudioObject.contentUrl`, les balises audio,
-les champs `audio_url` JSON (dont les tables Nuxt) et les liens vers un flux RSS.
-Le RSS de la série est prioritaire ; en cas d’échec, les audios présents dans la
-page sont utilisés. Les paramètres et URL audio fournis sont conservés.
-Les métadonnées disponibles sont insérées lorsque le format source le permet,
-puis le parcours habituel assure conversion, normalisation et pochette optionnelle.
+Pour de futurs builds legacy, produire des paquets aux noms distincts et une
+déclaration par variante dans un dossier contenant uniquement ses propres paquets :
 
-Pour les séries décrites par les données structurées `PodcastSeries` et `ItemList`
-(notamment les séries Radio France), le moteur suit uniquement la liste déclarée
-d’épisodes, dans l’ordre indiqué. Les pages d’épisodes sont consultées au moment
-du téléchargement, après application du mode et de la limite. Un épisode
-inaccessible arrête la playlist avec un message explicite.
-La pagination des collections n’est pas encore gérée : les séries Radio France
-annonçant plusieurs pages sont signalées plutôt que téléchargées partiellement.
-Le moteur n’exécute pas le JavaScript des sites.
-La compatibilité avec un autre site dépend des données qu’il expose. Aucun nouveau
-mécanisme de connexion n’est ajouté ; le support Audiomeans existant est conservé.
+```bash
+python scripts/update_manifest.py --directory releases-legacy --target macos-x86_64 --variant high-sierra --min-os 10.13
+```
 
-Pour les Podcasts web, le sous-dossier de série et la numérotation sont utilisés
-uniquement si plusieurs épisodes sont sélectionnés après application de la limite.
-Un fichier unique reste directement dans le dossier de sortie, sans numéro ajouté.
+La borne ci-dessus est un exemple à utiliser seulement après vérification du build
+sur le système visé. Une borne supérieure facultative `--max-os` peut aussi être
+précisée (version complète, borne incluse). Rassembler ensuite tous les paquets et
+leurs déclarations dans `releases/`, puis exécuter `python scripts/update_manifest.py`
+et publier le manifeste fusionné avec les fichiers, dans la même release.
+Ne pas remplacer le manifeste complet par celui d’une seule variante. Si plusieurs
+paquets conviennent, KLMP3 privilégie celui dont la version minimale est la plus récente.
+Aucun build High Sierra ou Catalina n’est encore produit par le workflow actuel.

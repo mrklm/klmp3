@@ -8,6 +8,23 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.10.7] – 2026-09-15
+
+Corrigé
+
+- Mises à jour : recherche de la dernière version compatible avec le système,
+  l’architecture et la version de macOS ; téléchargement désactivé si la compatibilité n’est pas confirmée.
+
+Ajouté
+
+- Manifeste de compatibilité généré à la publication, avec prise en charge des futures variantes legacy.
+
+Modifié
+
+- README et aide actualisés : Podcasts web, séries, rangement et mises à jour compatibles.
+
+---
+
 [2.10.6] – 2026-09-15
 
 Ajouté
