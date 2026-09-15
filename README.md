@@ -1,4 +1,4 @@
-![Version](https://img.shields.io/badge/version-2.10.4-blue)
+![Version](https://img.shields.io/badge/version-2.10.5-blue)
 ![License](https://img.shields.io/badge/license-GPL--3.0-green)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
@@ -24,6 +24,9 @@ Objectif : récupérer rapidement de l’audio propre (MP3,M4A,OPUS,FLAC,OGG,WAV
 ## 📥 Téléchargement
 
 ## 💾 Applications standalone (recommandé)
+
+La version des sources est **2.10.5**. Les liens ci-dessous restent ceux de la
+version **2.10.4**, en attendant une prochaine publication des paquets.
 
 - 🐧 **Linux**
   - [KLMP3-2.10.4-linux-x86_64.AppImage](https://github.com/mrklm/klmp3/releases)
@@ -239,8 +242,8 @@ Pour publier, mettre à jour `APP_VERSION`, le README et le changelog, puis comm
 et pousser les modifications avant de créer le tag correspondant :
 
 ```bash
-git tag v2.10.4
-git push origin v2.10.4
+git tag v2.10.5
+git push origin v2.10.5
 ```
 
 Le tag doit correspondre exactement à `APP_VERSION` et à une entrée du changelog.
@@ -254,3 +257,25 @@ Run workflow**. Les fichiers restent téléchargeables comme artefacts pendant 1
 Les paquets Windows et macOS ne sont pas signés avec un certificat éditeur ; le
 workflow ne réalise pas de notarisation Apple. Les builds distants devront être
 validés lors de la première exécution du workflow.
+
+## Podcasts web
+
+Collez l’URL d’un épisode ou d’une série dans le champ habituel :
+
+- Épisode Blast ou Radio France : téléchargement de cet épisode.
+- Série Blast, mode **Un fichier** : premier épisode dans l’ordre de la page.
+- Série Blast, mode **La playlist complète** : épisodes numérotés dans un
+  sous-dossier, avec la limite de nombre choisie (maximum 1 000).
+- URL de flux RSS : même choix fichier/playlist, dans l’ordre du flux.
+
+Le moteur lit les données structurées `AudioObject.contentUrl`, les balises audio,
+les champs `audio_url` JSON (dont les tables Nuxt) et les liens vers un flux RSS.
+Le RSS de la série est prioritaire ; en cas d’échec, les audios présents dans la
+page sont utilisés. Les paramètres et URL audio fournis sont conservés.
+Les métadonnées disponibles sont insérées lorsque le format source le permet,
+puis le parcours habituel assure conversion, normalisation et pochette optionnelle.
+
+Ce premier périmètre ne parcourt pas les pages d’épisodes d’une série Radio France,
+ne gère pas la pagination des collections et n’exécute pas le JavaScript des sites.
+La compatibilité avec un autre site dépend des données qu’il expose. Aucun nouveau
+mécanisme de connexion n’est ajouté ; le support Audiomeans existant est conservé.

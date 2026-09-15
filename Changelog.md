@@ -8,6 +8,17 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.10.5] – 2026-09-15
+
+Ajouté
+
+- « Podcasts web » : extraction des audios exposés dans les pages et les flux RSS,
+  avec prise en charge des épisodes Blast et Radio France.
+- Séries Blast : premier épisode en mode fichier unique, ou playlist numérotée
+  avec limite éventuelle, conversion, normalisation et métadonnées disponibles.
+
+---
+
 [2.10.4] – 2026-09-14
 
 Ajouté

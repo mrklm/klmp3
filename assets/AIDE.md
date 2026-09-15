@@ -14,7 +14,7 @@ KLmp3 est un outil simple et robuste permettant
 d’extraire le son de contenus en ligne.
 
 🎯 Plateformes supportées  
-→ YouTube & Twitch 💾
+→ YouTube, Twitch, Audiomeans et Podcasts web 💾
 
 📌 Vous fournissez une URL  
 🪠 KLmp3 s’occupe de la technique  
@@ -523,3 +523,13 @@ et les oreilles curieuses 🎧
 
       💙  KLmp3  💙
 
+
+
+🎙️ Podcasts web
+
+Coller la page d’un épisode Blast ou Radio France pour récupérer son audio.
+Pour une série Blast : le mode fichier unique prend le premier épisode ;
+« La playlist complète » télécharge les épisodes numérotés dans un sous-dossier,
+avec la limite éventuelle choisie. Une URL de flux RSS est aussi acceptée.
+La conversion, la normalisation et la pochette optionnelle restent disponibles.
+Les playlists Radio France et les collections paginées ne sont pas encore gérées.

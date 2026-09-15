@@ -21,6 +21,7 @@ import sys
 import shutil
 import tempfile
 from audiomeans import is_audiomeans, resolve as resolve_audiomeans
+from web_podcast import resolve as resolve_web_podcast
 import threading
 import subprocess
 import random
@@ -89,7 +90,7 @@ NORM_MODE_PRECISE = "Précis (LUFS / TP / LRA)"
 # Bibli de thèmes (issus de Garage)
 
 # --- Version de l'application (utilisée pour le titre + vérification MAJ) ---
-APP_VERSION = "2.10.4"
+APP_VERSION = "2.10.5"
 __version__ = APP_VERSION
 
 # --- Dépôt GitHub (release) pour la vérification MAJ ---
@@ -1939,7 +1940,7 @@ class App(tk.Tk):
         urls = [u] if u else []
 
         if not urls:
-            messagebox.showwarning("URL manquante", "Veuillez saisir une URL YouTube, Twitch, Audiomeans ou une page contenant un lecteur.")
+            messagebox.showwarning("URL manquante", "Veuillez saisir une URL vidéo, un lecteur Audiomeans ou une page de podcast.")
             return
 
 
@@ -2305,19 +2306,52 @@ class App(tk.Tk):
         platform: str,
         dl_mode: str,
         limit_on: bool,
-        limit_n: int
+        limit_n: int,
+        audio_info=None
     ):
         """
         Télécharge un fichier audio (intermédiaire) avec yt-dlp,
         puis convertit avec ffmpeg.
         """
 
-        audio_info = None
-        if platform not in ("youtube", "twitch"):
+        if self.stop_flag.is_set():
+            return False, "⏹️ Annulé par l’utilisateur"
+        if audio_info is None and platform not in ("youtube", "twitch"):
             audio_info = resolve_audiomeans(url, self.log)
             if audio_info:
                 platform = "audiomeans"
                 dl_mode = DL_MODE_SINGLE
+            else:
+                audio_info = resolve_web_podcast(url, self.log)
+                if audio_info:
+                    platform = "web_podcast"
+                    self.log("🎙️ Podcasts web : audio détecté.")
+        if audio_info and "entries" in audio_info:
+            entries = audio_info["entries"]
+            if dl_mode != DL_MODE_PLAYLIST:
+                entries = entries[:1]
+            elif limit_on:
+                entries = entries[:max(1, min(int(limit_n), 1000))]
+            else:
+                entries = entries[:1000]
+            from yt_dlp.utils import sanitize_filename
+            if dl_mode == DL_MODE_PLAYLIST:
+                folder = sanitize_filename(audio_info["title"], restricted=False)[:150].strip(" .") or "Podcast"
+                outdir = os.path.join(outdir, folder)
+                os.makedirs(outdir, exist_ok=True)
+            for index, entry in enumerate(entries, 1):
+                if self.stop_flag.is_set():
+                    return False, "⏹️ Annulé par l’utilisateur"
+                item = dict(entry)
+                if dl_mode == DL_MODE_PLAYLIST:
+                    item["title"] = f"{index:0{max(2, len(str(len(entries))))}d} - {item['title']}"
+                ok, message = self._pipeline_download_and_convert(
+                    url, outdir, fmt, "web_podcast", DL_MODE_SINGLE, False, 0, audio_info=item)
+                if not ok:
+                    return False, message
+            return True, f"✅ {len(entries)} épisode(s) téléchargé(s) et converti(s)."
+        if audio_info:
+            dl_mode = DL_MODE_SINGLE
         if self.stop_flag.is_set():
             return False, "⏹️ Annulé par l’utilisateur"
 
@@ -2348,7 +2382,7 @@ class App(tk.Tk):
         if audio_info:
             # Isolate source files from existing outputs, including other recent
             # downloads. Keep the original title through yt-dlp's sanitization.
-            with tempfile.TemporaryDirectory(prefix="klmp3-audiomeans-") as staging:
+            with tempfile.TemporaryDirectory(prefix="klmp3-podcast-") as staging:
                 ok, downloaded = self._download_audio(
                     url, os.path.join(staging, "%(title).180s.%(ext)s"),
                     platform, dl_mode, limit_on, limit_n, audio_info=audio_info,
@@ -2364,6 +2398,24 @@ class App(tk.Tk):
                     source = os.path.join(outdir, candidate + ".klmp3-source")
                     shutil.move(downloaded, source)
                     downloaded = source
+                    if platform == "web_podcast":
+                        try:
+                            from mutagen import File as AudioFile
+                            tags = AudioFile(source, easy=True)
+                            if tags is not None:
+                                if tags.tags is None:
+                                    tags.add_tags()
+                                for key, value in {
+                                    "title": audio_info.get("track") or audio_info.get("title"),
+                                    "artist": audio_info.get("artist"),
+                                    "album": audio_info.get("album"),
+                                    "date": audio_info.get("release_date"),
+                                }.items():
+                                    if value:
+                                        tags[key] = [str(value)]
+                                tags.save()
+                        except Exception:
+                            self.log("Métadonnées du podcast non insérées ; poursuite de la conversion.")
         else:
             ok, downloaded = self._download_audio(
                 url, outtmpl, platform=platform, dl_mode=dl_mode,
@@ -2410,7 +2462,7 @@ class App(tk.Tk):
                     self._cleanup_partials_for(downloaded_path, platform)
                     return False, "⏹️ Annulé par l’utilisateur\n🧹 Fichiers temporaires nettoyés"
 
-                if platform == "audiomeans":
+                if platform in ("audiomeans", "web_podcast"):
                     self._cleanup_partials_for(downloaded_path, platform)
                 return False, msg_or_final
 
@@ -2426,7 +2478,7 @@ class App(tk.Tk):
 
                         # --- Pochette YouTube (best effort) ---
             try:
-                if platform in ("youtube", "audiomeans") and bool(self.fetch_cover_var.get()):
+                if platform in ("youtube", "audiomeans", "web_podcast") and bool(self.fetch_cover_var.get()):
 
                     if self.stop_flag.is_set():
                         self.log("⏹️ Annulation demandée — arrêt avant récupération miniature…")
@@ -2481,7 +2533,7 @@ class App(tk.Tk):
                     self._safe_remove(os.path.join(folder, stem + ".part"))
 
                     # Variantes d’extensions possibles (selon ce que yt-dlp sort)
-                    for ext in (() if platform == "audiomeans" else (".webm", ".m4a", ".mp4", ".opus", ".ogg", ".mkv")):
+                    for ext in (() if platform in ("audiomeans", "web_podcast") else (".webm", ".m4a", ".mp4", ".opus", ".ogg", ".mkv")):
                         candidate = os.path.join(folder, stem + ext)
                         # sécurité : ne jamais supprimer le fichier final
                         if os.path.abspath(candidate) != os.path.abspath(final_path):
@@ -2758,7 +2810,7 @@ class App(tk.Tk):
             if getattr(self, "deno_path", None):
                 cmd += ["--js-runtimes", f"deno:{self.deno_path}", "--remote-components", "ejs:github"]
 
-            self.log("▶️ yt-dlp (binaire) : téléchargement Audiomeans…" if audio_info else "▶️ yt-dlp (binaire) : " + " ".join(cmd))
+            self.log("▶️ yt-dlp (binaire) : téléchargement podcast…" if audio_info else "▶️ yt-dlp (binaire) : " + " ".join(cmd))
 
             dest_re = re.compile(r"Destination:\s(.+)$")
 
