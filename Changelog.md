@@ -8,6 +8,13 @@ Le format est inspiré de Keep a Changelog et le versionnement suit une logique 
 
 ---
 
+[2.10.8] – 2026-09-15
+
+- Support de QuickJS embarqué et adaptation du build macOS High Sierra ; Deno conservé pour les autres builds.
+- Blocage des mises à jour autonomes yt-dlp incompatibles avec macOS antérieur à 10.15.
+
+---
+
 [2.10.7] – 2026-09-15
 
 Corrigé

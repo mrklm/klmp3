@@ -91,7 +91,7 @@ NORM_MODE_PRECISE = "Précis (LUFS / TP / LRA)"
 # Bibli de thèmes (issus de Garage)
 
 # --- Version de l'application (utilisée pour le titre + vérification MAJ) ---
-APP_VERSION = "2.10.7"
+APP_VERSION = "2.10.8"
 __version__ = APP_VERSION
 
 # --- Dépôt GitHub (release) pour la vérification MAJ ---
@@ -269,8 +269,29 @@ def _ytdlp_release_asset_name() -> str:
     return "yt-dlp_linux"
 
 
+def ytdlp_standalone_update_allowed() -> bool:
+    """The upstream macOS standalone requires macOS 10.15 or newer."""
+    if sys.platform != "darwin":
+        return True
+    parts = platform.mac_ver()[0].split(".")
+    try:
+        return tuple(int(p) for p in parts[:2]) >= (10, 15)
+    except ValueError:
+        return False
+
+
+YTDLP_LEGACY_MESSAGE = (
+    "La mise à jour autonome de yt-dlp n’est pas disponible pour cette version de macOS "
+    "(minimum 10.15). KLMP3 conserve le yt-dlp fourni avec l’application. "
+    "Pour le mettre à jour, utilisez un nouveau paquet KLMP3 compatible."
+)
+
+
 def download_latest_ytdlp_to(target_path: str, log_fn) -> bool:
     """Télécharge la dernière release yt-dlp et l'installe dans target_path."""
+    if not ytdlp_standalone_update_allowed():
+        log_fn(YTDLP_LEGACY_MESSAGE)
+        return False
     api_url = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest"
     asset_name = _ytdlp_release_asset_name()
 
@@ -345,6 +366,12 @@ def find_ytdlp_tools_first() -> ToolPath:
     2) Ensuite dans le PATH
     3) Sinon dans tools/<platform>/yt-dlp (ou .exe sur Windows)
     """
+    if not ytdlp_standalone_update_allowed():
+        # Do not select a stale standalone from USER or PATH on legacy macOS.
+        if ytdlp_module_available():
+            return ToolPath(path=None, source="MODULE")
+        bundled = os.path.join(_app_base_dir(), "tools", _platform_tag(), "yt-dlp")
+        return ToolPath(path=bundled if _is_executable(bundled) else None, source="TOOLS" if _is_executable(bundled) else "MISSING")
     user_name = "yt-dlp.exe" if sys.platform.startswith("win") else "yt-dlp"
     user_cand = _user_tool_path(user_name)
     if _is_executable(user_cand):
@@ -386,6 +413,17 @@ def find_deno_tools_first() -> ToolPath:
         return ToolPath(path=cand, source="MISSING")
 
     return ToolPath(path=None, source="MISSING")
+
+
+def find_js_runtime_tools_first() -> tuple[str, ToolPath]:
+    """Prefer an executable bundled QuickJS; otherwise keep Deno discovery."""
+    name = "qjs.exe" if sys.platform.startswith("win") else "qjs"
+    candidate = os.path.join(_app_base_dir(), "tools", _platform_tag(), name)
+    if _is_executable(candidate):
+        return "quickjs", ToolPath(path=candidate, source="TOOLS")
+    return "deno", find_deno_tools_first()
+
+
 def run_subprocess(cmd: list[str], on_line, stop_flag: threading.Event, set_proc=None, clear_proc=None) -> int:
 
     """Run a subprocess, stream stdout+stderr line by line to on_line()."""
@@ -667,9 +705,9 @@ class App(tk.Tk):
                 if not self.ytdlp_path:
                     self._startup_msgs.append("❌ Mode packagé : yt-dlp introuvable dans tools/<platform>/")
 
-        # --- Deno ---
-        self.deno = find_deno_tools_first()
-        self.deno_path = self.deno.path
+        # Runtime selected by package contents (no OS-version special case).
+        self.js_runtime_name, self.js_runtime = find_js_runtime_tools_first()
+        self.js_runtime_path = self.js_runtime.path
 
         self._build_ui()
 
@@ -1270,6 +1308,10 @@ class App(tk.Tk):
 
     def update_ytdlp_for_user(self):
         """Met à jour yt-dlp pour l'utilisateur (binaire) dans un dossier écrivable."""
+        if not ytdlp_standalone_update_allowed():
+            self.log(YTDLP_LEGACY_MESSAGE)
+            messagebox.showinfo("Mise à jour yt-dlp", YTDLP_LEGACY_MESSAGE)
+            return
         if getattr(self, "_ytdlp_update_running", False):
             self.log("ℹ️ Une mise à jour yt-dlp est déjà en cours.")
             return
@@ -1408,6 +1450,9 @@ class App(tk.Tk):
     def _offer_ytdlp_update_after_failure(self, msg: str) -> None:
         """Propose une mise à jour yt-dlp si l'erreur y ressemble vraiment."""
         if not self._error_looks_like_ytdlp_issue(msg):
+            return
+        if not ytdlp_standalone_update_allowed():
+            self.log(YTDLP_LEGACY_MESSAGE)
             return
         if getattr(self, "_ytdlp_update_running", False):
             return
@@ -1666,6 +1711,10 @@ class App(tk.Tk):
                 "retries": 5,
                 "fragment_retries": 5,
             }
+            runtime_path = getattr(self, "js_runtime_path", None)
+            if runtime_path:
+                ydl_opts["js_runtimes"] = {getattr(self, "js_runtime_name", "deno"): {"path": runtime_path}}
+                ydl_opts["remote_components"] = ["ejs:github"]
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
 
@@ -1812,12 +1861,11 @@ class App(tk.Tk):
     def _check_tools(self):
         missing = []
 
-        # Deno : runtime JavaScript pour YouTube (JS challenges)
-        if not getattr(self, "deno_path", None):
-            self.log("ℹ️ Deno absent : certaines vidéos YouTube peuvent demander un challenge JS (mode dégradé)")
+        runtime_label = "QuickJS" if self.js_runtime_name == "quickjs" else "Deno"
+        if not self.js_runtime_path:
+            self.log("ℹ️ Runtime JavaScript embarqué absent : certaines vidéos YouTube peuvent échouer.")
         else:
-            self.log("📦 Deno embarqué : support YouTube (JS challenge)")
-
+            self.log(f"📦 {runtime_label} embarqué : support YouTube (JS challenge)")
 
         # ffmpeg/ffprobe via PATH ou tools/
         if not self.ffmpeg_path:
@@ -2066,6 +2114,10 @@ class App(tk.Tk):
                 "noplaylist": True,
             }
 
+            runtime_path = getattr(self, "js_runtime_path", None)
+            if runtime_path:
+                ydl_opts["js_runtimes"] = {getattr(self, "js_runtime_name", "deno"): {"path": runtime_path}}
+                ydl_opts["remote_components"] = ["ejs:github"]
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
 
@@ -2125,6 +2177,12 @@ class App(tk.Tk):
                 "--no-playlist",
                 url,
             ]
+            runtime_path = getattr(self, "js_runtime_path", None)
+            if runtime_path:
+                runtime_name = getattr(self, "js_runtime_name", "deno")
+                if runtime_name == "quickjs":
+                    cmd += ["--ignore-config", "--no-js-runtimes"]
+                cmd += ["--js-runtimes", f"{runtime_name}:{runtime_path}", "--remote-components", "ejs:github"]
             rc, out = self._run_subprocess_collect(cmd)
             if rc != 0 or not out:
                 return None
@@ -2678,16 +2736,15 @@ class App(tk.Tk):
                 ydl_opts["cookiesfrombrowser"] = (token,)
                 self.log(f"🍪 Cookies YouTube : lecture depuis le navigateur ({label})")
 
-                # YouTube JS challenges (EJS) : activer runtime + solver distant
-                # Equivalent CLI:
-                #   --js-runtimes deno:/path/to/deno --remote-components ejs:github
-                deno_path = getattr(self, "deno_path", None)
-                if deno_path and os.path.isfile(deno_path):
-                    ydl_opts["js_runtimes"] = {"deno": {"path": deno_path}}
+            runtime_name = getattr(self, "js_runtime_name", "deno")
+            runtime_path = getattr(self, "js_runtime_path", None)
+            # Also cover generic pages that yt-dlp may resolve to YouTube.
+            if platform == "youtube" or runtime_name == "quickjs":
+                if runtime_path and os.path.isfile(runtime_path):
+                    ydl_opts["js_runtimes"] = {runtime_name: {"path": runtime_path}}
                     ydl_opts["remote_components"] = ["ejs:github"]
-
                 else:
-                    self.log("⚠️ Deno introuvable : certaines vidéos YouTube peuvent échouer (JS challenge).")
+                    self.log("⚠️ Runtime JavaScript embarqué introuvable : certaines vidéos YouTube peuvent échouer.")
 
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -2762,8 +2819,13 @@ class App(tk.Tk):
 
 
 
-            if getattr(self, "deno_path", None):
-                cmd += ["--js-runtimes", f"deno:{self.deno_path}", "--remote-components", "ejs:github"]
+            runtime_path = getattr(self, "js_runtime_path", None)
+            if runtime_path:
+                runtime_name = getattr(self, "js_runtime_name", "deno")
+                # CLI enables Deno by default: explicitly disable it for QuickJS.
+                if runtime_name == "quickjs":
+                    cmd += ["--no-js-runtimes"]
+                cmd += ["--js-runtimes", f"{runtime_name}:{runtime_path}", "--remote-components", "ejs:github"]
 
             self.log("▶️ yt-dlp (binaire) : téléchargement podcast…" if audio_info else "▶️ yt-dlp (binaire) : " + " ".join(cmd))
 
