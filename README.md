@@ -46,6 +46,12 @@ plusieurs pages sont signalées comme non prises en charge. Un épisode sans aud
 arrête la playlist avec un message explicite. La compatibilité avec d’autres sites
 dépend des données qu’ils exposent ; la fonction n’est pas universelle.
 
+## 🎧 Audiomeans
+
+Collez l’URL d’un lecteur Audiomeans ou d’une page qui l’intègre pour télécharger
+l’épisode auquel vous avez accès. La conversion, la normalisation et la récupération
+de pochette sont disponibles. Les playlists Audiomeans ne sont pas prises en charge.
+
 ## 🔄 Mise à jour de KLMP3
 
 Dans **Options**, KLMP3 recherche une version plus récente compatible avec le
@@ -240,102 +246,3 @@ clementmorel@free.fr
 ---
 
 🎧️ Bonne écoute avec KLmp3 !
-
-
-
-
-## Audiomeans
-
-Collez une URL `https://podcasts.audiomeans.fr/player-v2/<podcast>/episodes/<id>`
-ou l’adresse d’une page contenant ce lecteur, puis démarrez le téléchargement.
-Les liens intégrés via Embedly et les URL encodées sont reconnus. Le premier
-lecteur d’épisode trouvé est téléchargé ; les playlists Audiomeans ne sont pas prises en charge.
-La page doit exposer le lecteur dans son HTML. Pour Mediapart, si aucun lecteur
-n’est trouvé sur la page publique, KLMP3 réessaie avec les cookies du profil
-Firefox par défaut. Connectez-vous au préalable dans Firefox avec un abonnement
-donnant accès à l’article. Seuls les cookies Mediapart sont utilisés, en mémoire,
-et ils ne sont pas transmis au domaine Audiomeans. Le module Python yt-dlp est
-nécessaire pour lire la session, même si le téléchargement utilise le binaire.
-Les lecteurs chargés uniquement par JavaScript ne sont pas pris en charge.
-En l’absence de lecteur, KLMP3 tente son extraction habituelle avec yt-dlp.
-
-Le lecteur fournit `episode.audio.path` dans `window.__INITIAL_DATA__`.
-KLMP3 relit ces données à chaque téléchargement et laisse le serveur audio
-rediriger yt-dlp vers le fichier signé. Aucun paramètre de signature n’est
-reconstruit ni conservé dans une configuration. Le mode binaire utilise un JSON
-privé temporaire, supprimé après exécution, pour transmettre les métadonnées à yt-dlp.
-Les liens directs `files.audiomeans.fr` sont également acceptés, mais un lien
-signé expiré nécessite de repartir de l’URL du lecteur.
-
-Le titre sert au nom du fichier ; l’option de pochette utilise le visuel du lecteur.
-La conversion et la normalisation utilisent le même parcours FFmpeg que les autres sources.
-
-Tests hors réseau (avec les dépendances installées) :
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-Les tests couvrent Audiomeans, Podcasts web, les séries et leur rangement, les
-modes module/binaire de yt-dlp et la sélection des mises à jour compatibles.
-Les tests de conversion audio réelle utilisent FFmpeg embarqué lorsqu’il est présent.
-
-## Publication automatique sur GitHub
-
-Le workflow `.github/workflows/release.yml` construit Linux x86_64 (AppImage et
-archive tar.gz), Windows x86_64 (ZIP) et macOS Intel (DMG et ZIP).
-Il télécharge les outils embarqués, lance les tests et utilise les scripts de build
-existants. Les outils sont téléchargés depuis leurs fournisseurs : FFmpeg via
-John Van Sickle, Gyan et Evermeet, Deno et yt-dlp via leurs releases GitHub,
-et appimagetool via le projet AppImage. Leurs versions sont affichées dans les logs ;
-les téléchargements suivent les versions proposées par ces fournisseurs.
-
-Pour publier, mettre à jour `APP_VERSION`, le README et le changelog, puis committer
-et pousser les modifications avant de créer le tag correspondant :
-
-```bash
-git tag v2.10.8
-git push origin v2.10.8
-```
-
-Le tag doit correspondre exactement à `APP_VERSION` et à une entrée du changelog.
-Après réussite des trois builds, une release est publiée avec les paquets, les
-sommes SHA-256 et les notes extraites du changelog. Une release déjà publiée n’est
-pas écrasée. Aucun secret supplémentaire n’est requis : le job de publication
-utilise le `GITHUB_TOKEN` fourni par GitHub Actions.
-
-Pour essayer les builds sans publier, utiliser **Actions → Build and release →
-Run workflow**. Les fichiers restent téléchargeables comme artefacts pendant 14 jours.
-Les paquets Windows et macOS ne sont pas signés avec un certificat éditeur ; le
-workflow ne réalise pas de notarisation Apple. Les builds distants devront être
-validés lors de la première exécution du workflow.
-
-## Développeurs : manifeste de compatibilité
-
-KLMP3 consulte les releases stables et recherche la plus récente compatible avec
-son système et son architecture. Pour macOS, la version du système doit respecter
-les bornes déclarées pour le paquet. Une release sans manifeste `klmp3-update.json`,
-un paquet absent, ou une compatibilité non confirmée ne déclenche pas de proposition
-de téléchargement. Une erreur réseau est affichée comme une vérification indisponible.
-
-Le workflow génère des fichiers `compat-<cible>.json`, puis les fusionne dans
-`klmp3-update.json` avant publication. La version du manifeste doit correspondre au
-tag. Le paquet macOS actuel déclare par prudence la version du système de build
-comme minimum ; cela ne certifie pas sa compatibilité avec les systèmes plus anciens.
-Les bornes s’appliquent au paquet complet, y compris Python, Tcl/Tk et les outils embarqués.
-
-Pour de futurs builds legacy, produire des paquets aux noms distincts et une
-déclaration par variante dans un dossier contenant uniquement ses propres paquets :
-
-```bash
-python scripts/update_manifest.py --directory releases-legacy --target macos-x86_64 --variant high-sierra --min-os 10.13
-```
-
-La borne ci-dessus est un exemple à utiliser seulement après vérification du build
-sur le système visé. Une borne supérieure facultative `--max-os` peut aussi être
-précisée (version complète, borne incluse). Rassembler ensuite tous les paquets et
-leurs déclarations dans `releases/`, puis exécuter `python scripts/update_manifest.py`
-et publier le manifeste fusionné avec les fichiers, dans la même release.
-Ne pas remplacer le manifeste complet par celui d’une seule variante. Si plusieurs
-paquets conviennent, KLMP3 privilégie celui dont la version minimale est la plus récente.
-Aucun build High Sierra ou Catalina n’est encore produit par le workflow actuel.
